@@ -35,15 +35,15 @@ export const Badge: React.FC<BadgeProps> = ({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${variants[variant]} ${className}`}
+      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium border ${variants[variant]} ${className}`}
     >
       {pulse && (
-        <span className="relative flex h-2 w-2">
+        <span className="relative flex h-3 w-3">
           <span
             className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${dotColors[variant]}`}
           />
           <span
-            className={`relative inline-flex rounded-full h-2 w-2 ${dotColors[variant]}`}
+            className={`relative inline-flex rounded-full h-3 w-3 ${dotColors[variant]}`}
           />
         </span>
       )}

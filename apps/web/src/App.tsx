@@ -130,10 +130,12 @@ export default function App() {
                 <FileExplorer device={selectedDevice} onDownload={handleDownload} />
               </div>
 
-              {/* Drop zone */}
-              <div className="px-5 py-4 border-t border-white/5">
-                <DropZone onFilesDropped={handleFilesDropped} />
-              </div>
+              {/* Drop zone (hidden for web clients since they can't receive HTTP uploads) */}
+              {!selectedDevice.isWebClient && (
+                <div className="px-5 py-4 border-t border-white/5">
+                  <DropZone onFilesDropped={handleFilesDropped} />
+                </div>
+              )}
             </>
           ) : (
             /* Welcome screen */
@@ -167,7 +169,7 @@ export default function App() {
                   ].map((feat) => (
                     <div
                       key={feat.title}
-                      className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.05]"
+                      className="p-3 flex flex-col items-center justify-center rounded-xl bg-white/[0.03] border border-white/[0.05]"
                     >
                       <span className="text-xl">{feat.icon}</span>
                       <p className="text-xs font-medium text-white mt-1.5">{feat.title}</p>

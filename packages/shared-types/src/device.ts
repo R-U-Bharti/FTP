@@ -16,8 +16,10 @@ export interface Device {
   online: boolean;
   /** Timestamp of last heartbeat */
   lastSeen: number;
-  /** Session token for authenticated communication */
-  sessionToken?: string;
+  /** Whether this device is a browser-only client (cannot host files) */
+  isWebClient?: boolean;
+  /** Whether this device is the Expo Mobile App (hosts files via WebSocket) */
+  isExpoApp?: boolean;
 }
 
 /** Device registration payload sent via UDP broadcast */

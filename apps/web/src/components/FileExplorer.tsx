@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import type { Device, FileEntry } from '@localdrop/shared-types';
 import { useFileExplorer } from '../hooks/useFileExplorer';
+import { getSocket } from '../lib/socket';
 import FileItem from './FileItem';
 
 interface FileExplorerProps {
@@ -10,9 +11,8 @@ interface FileExplorerProps {
 
 /** File explorer panel for browsing remote device files */
 const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
-  const baseUrl = device ? `http://${device.ip}:${device.port}` : '';
   const { entries, currentPath, loading, error, navigate, goUp, goToFolder, breadcrumbs } =
-    useFileExplorer(baseUrl);
+    useFileExplorer(device);
 
   // Navigate to root when device changes
   useEffect(() => {
@@ -31,8 +31,40 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
     );
   }
 
+  if (device.isWebClient) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-white/[0.01]">
+        <div className="text-6xl mb-4 animate-float">📱</div>
+        <h3 className="text-lg font-semibold text-white mb-2">Web Browser Client</h3>
+        <p className="text-sm text-gray-400 max-w-sm leading-relaxed">
+          This device is connected via a web browser and cannot host files to browse.
+        </p>
+        <div className="mt-6 p-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-left max-w-sm">
+          <p className="text-sm text-violet-200 font-medium mb-1">How to send files?</p>
+          <p className="text-xs text-violet-300/80">
+            To send files <b>from your PC to this mobile</b>, open this page on the mobile browser, select your PC, and download the files you want!
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const handleDownload = (entry: FileEntry) => {
-    onDownload(entry.path, entry.name);
+    if (device.isExpoApp) {
+      const socket = getSocket();
+      socket.emit('proxy:file_download', { targetDeviceId: device.id, path: entry.path }, (res: any) => {
+        if (res.error) return alert('Download failed: ' + res.error);
+        
+        const link = document.createElement('a');
+        link.href = `data:application/octet-stream;base64,${res.data}`;
+        link.download = entry.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+    } else {
+      onDownload(entry.path, entry.name);
+    }
   };
 
   return (

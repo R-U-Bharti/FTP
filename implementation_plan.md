@@ -1,4 +1,6 @@
 # LocalDrop — High-Performance Local File Sharing App
+npx eas build -p android --profile preview
+
 
 A production-grade, AirDrop-like local file sharing web app that works entirely on local networks without internet.
 

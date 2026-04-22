@@ -43,22 +43,28 @@ export function setupWebSocketHandlers(
     console.log(`[WebSocket] Client connected: ${socket.id}`);
 
     // Create a transient device for this browser client
-    const clientIp = socket.handshake.address.replace("::ffff:", "");
+    const forwarded = socket.handshake.headers["x-forwarded-for"];
+    const realIp = typeof forwarded === "string" ? forwarded.split(",")[0] : socket.handshake.address;
+    const clientIp = realIp.replace("::ffff:", "");
     const userAgent = socket.handshake.headers["user-agent"] || "";
     
     const isMobile = /mobile/i.test(userAgent);
-    const isTablet = /tablet/i.test(userAgent);
+    const isExpoApp = socket.handshake.query.clientType === 'expo-app';
     
-    const webDevice = {
-      id: `web-${socket.id}`,
-      name: isMobile ? "Mobile Browser" : isTablet ? "Tablet Browser" : "Web Browser",
+    let deviceName = isMobile ? "Mobile Browser" : "Web Browser";
+    if (isExpoApp) deviceName = "Mobile App";
+
+    const webDevice: Device = {
+      id: `web-${clientIp}`,
+      name: deviceName,
       ip: clientIp,
-      port: 0, // No server port
-      platform: userAgent.split("(")[1]?.split(";")[0] || "Web",
-      deviceType: isMobile ? "mobile" : isTablet ? "tablet" : "desktop",
+      port: 0,
+      platform: isExpoApp ? "android" : "web",
+      deviceType: isMobile || isExpoApp ? "mobile" : "desktop",
       online: true,
       lastSeen: Date.now(),
-      isWebClient: true
+      isWebClient: !isExpoApp,
+      isExpoApp: isExpoApp
     };
 
     webDevices.set(socket.id, webDevice);
@@ -137,12 +143,91 @@ export function setupWebSocketHandlers(
       }
     });
 
+    socket.on("device:leave", () => {
+      // Remove from broadcast list but keep in session
+      const device = discovery.getDevices().get(socket.id);
+      if (device) {
+        device.online = false;
+        io.emit("devices:update", Array.from(discovery.getDevices().values()));
+      }
+    });
+
+    // --- Proxy Events for Mobile App ---
+    socket.on("proxy:file_list", (data: { targetDeviceId: string, path: string }, callback) => {
+      let targetSocketId: string | null = null;
+      for (const [sId, dev] of webDevices.entries()) {
+        if (dev.id === data.targetDeviceId) {
+          targetSocketId = sId;
+          break;
+        }
+      }
+
+      if (!targetSocketId) {
+        return callback({ error: "Device not found or offline" });
+      }
+
+      const requestId = Math.random().toString(36).substring(7);
+      
+      const responseHandler = (resData: any) => {
+        if (resData.requestId === requestId) {
+          socket.removeListener('file:list_response', responseHandler);
+          callback(resData);
+        }
+      };
+      
+      const targetSocket = io.sockets.sockets.get(targetSocketId);
+      if (!targetSocket) return callback({ error: "Socket disconnected" });
+      
+      targetSocket.once('file:list_response', responseHandler);
+      targetSocket.emit('file:list_request', { path: data.path, requestId });
+      
+      setTimeout(() => {
+        targetSocket.removeListener('file:list_response', responseHandler);
+        callback({ error: "Timeout waiting for mobile app" });
+      }, 10000);
+    });
+
+    socket.on("proxy:file_download", (data: { targetDeviceId: string, path: string }, callback) => {
+      let targetSocketId: string | null = null;
+      for (const [sId, dev] of webDevices.entries()) {
+        if (dev.id === data.targetDeviceId) {
+          targetSocketId = sId;
+          break;
+        }
+      }
+
+      if (!targetSocketId) {
+        return callback({ error: "Device not found" });
+      }
+
+      const requestId = Math.random().toString(36).substring(7);
+      
+      const targetSocket = io.sockets.sockets.get(targetSocketId);
+      if (!targetSocket) return callback({ error: "Socket disconnected" });
+
+      const responseHandler = (resData: any) => {
+        if (resData.requestId === requestId) {
+          targetSocket.removeListener('file:download_response', responseHandler);
+          callback(resData);
+        }
+      };
+      
+      targetSocket.once('file:download_response', responseHandler);
+      targetSocket.emit('file:download_request', { path: data.path, requestId });
+      
+      setTimeout(() => {
+        targetSocket.removeListener('file:download_response', responseHandler);
+        callback({ error: "Timeout waiting for mobile app download" });
+      }, 30000);
+    });
+
     socket.on("disconnect", () => {
       console.log(`[WebSocket] Client disconnected: ${socket.id}`);
-      const deviceId = `web-${socket.id}`;
+      let disconnectedDeviceId = `web-${socket.id}`;
       if (webDevices.has(socket.id)) {
+        disconnectedDeviceId = webDevices.get(socket.id).id;
         webDevices.delete(socket.id);
-        io.emit(EVENTS.DEVICE_LOST, { deviceId });
+        io.emit(EVENTS.DEVICE_LOST, { deviceId: disconnectedDeviceId });
       }
     });
   });
