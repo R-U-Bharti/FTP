@@ -84,11 +84,14 @@ export default function App() {
 
               const files = await FileSystem.StorageAccessFramework.readDirectoryAsync(targetUri);
               addLog(`Found ${files.length} items in folder`);
+              
+              socket.emit("file:list_progress", { requestId: data.requestId, loaded: 0, total: files.length });
 
               const entries = [];
-              for (const fileUri of files) {
+              for (let i = 0; i < files.length; i++) {
+                const fileUri = files[i];
                 try {
-                  // Ignore files we can't get info for (e.g., hidden or restricted)
+                  // Ignore files we can't get info for
                   const info = await FileSystem.getInfoAsync(fileUri);
                   const decodedUri = decodeURIComponent(fileUri);
                   const name = decodedUri.split("/").pop() || "Unknown";
@@ -105,6 +108,11 @@ export default function App() {
                   });
                 } catch (e) {
                   console.error(`Failed to read info for ${fileUri}:`, e);
+                }
+                
+                // Emit progress
+                if (i % 5 === 0 || i === files.length - 1) {
+                  socket.emit("file:list_progress", { requestId: data.requestId, loaded: i + 1, total: files.length });
                 }
               }
 
@@ -130,15 +138,33 @@ export default function App() {
             try {
               addLog(`PC downloading file...`);
               const fileUri = data.path;
-
-              const fileData = await FileSystem.readAsStringAsync(fileUri, {
-                encoding: FileSystem.EncodingType.Base64,
-              });
-
-              socket.emit("file:download_response", {
-                requestId: data.requestId,
-                data: fileData,
-              });
+              
+              const info = await FileSystem.getInfoAsync(fileUri);
+              if (!info.exists) throw new Error("File does not exist");
+              
+              const totalSize = info.size || 0;
+              const chunkSize = 1024 * 512; // 512KB chunks
+              let position = 0;
+              
+              while (position < totalSize) {
+                const chunkLength = Math.min(chunkSize, totalSize - position);
+                const chunkData = await FileSystem.readAsStringAsync(fileUri, { 
+                  encoding: FileSystem.EncodingType.Base64,
+                  position,
+                  length: chunkLength
+                });
+                
+                socket.emit('file:download_chunk', { 
+                  requestId: data.requestId, 
+                  chunk: chunkData, 
+                  position, 
+                  totalSize 
+                });
+                
+                position += chunkLength;
+              }
+              
+              socket.emit('file:download_response', { requestId: data.requestId });
               addLog(`Sent file to PC!`);
             } catch (err) {
               socket.emit("file:download_response", {

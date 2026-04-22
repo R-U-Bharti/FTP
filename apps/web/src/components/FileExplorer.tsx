@@ -11,8 +11,10 @@ interface FileExplorerProps {
 
 /** File explorer panel for browsing remote device files */
 const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
-  const { entries, currentPath, loading, error, navigate, goUp, goToFolder, breadcrumbs } =
+  const { entries, currentPath, loading, error, progress, navigate, goUp, goToFolder, breadcrumbs } =
     useFileExplorer(device);
+
+  const [downloadProgress, setDownloadProgress] = React.useState<{ name: string; loaded: number; total: number } | null>(null);
 
   // Navigate to root when device changes
   useEffect(() => {
@@ -49,18 +51,50 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
     );
   }
 
+  const base64ToUint8Array = (base64: string) => {
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  };
+
   const handleDownload = (entry: FileEntry) => {
     if (device.isExpoApp) {
+      setDownloadProgress({ name: entry.name, loaded: 0, total: entry.size });
       const socket = getSocket();
-      socket.emit('proxy:file_download', { targetDeviceId: device.id, path: entry.path }, (res: any) => {
-        if (res.error) return alert('Download failed: ' + res.error);
+      const reqId = Math.random().toString(36).substring(7);
+      const chunks: Uint8Array[] = [];
+      let currentLoaded = 0;
+      
+      const onChunk = (data: any) => {
+        const bytes = base64ToUint8Array(data.chunk);
+        chunks.push(bytes);
+        currentLoaded += data.chunk.length; // rough estimate based on base64 len
+        setDownloadProgress({ name: entry.name, loaded: currentLoaded, total: data.totalSize * 1.33 }); // account for base64 inflation
+      };
+      
+      socket.on(`proxy:file_download_chunk_${reqId}`, onChunk);
+      socket.emit('proxy:file_download', { targetDeviceId: device.id, path: entry.path, clientRequestId: reqId }, (res: any) => {
+        socket.off(`proxy:file_download_chunk_${reqId}`, onChunk);
+        if (res.error) {
+          setDownloadProgress(null);
+          return alert('Download failed: ' + res.error);
+        }
         
+        const blob = new Blob(chunks, { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = `data:application/octet-stream;base64,${res.data}`;
+        link.href = url;
         link.download = entry.name;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        setDownloadProgress(null);
       });
     } else {
       onDownload(entry.path, entry.name);
@@ -68,7 +102,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
       {/* Breadcrumb navigation */}
       <div className="px-5 py-3 border-b border-white/5 flex items-center gap-1 overflow-x-auto">
         {breadcrumbs.map((crumb, i) => (
@@ -102,18 +136,45 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
           </svg>
         </button>
       </div>
+      
+      {/* Download Progress Overlay */}
+      {downloadProgress && (
+        <div className="absolute top-14 left-0 right-0 z-10 bg-violet-900/90 backdrop-blur-sm border-b border-violet-500/30 p-3 flex flex-col items-center justify-center">
+          <p className="text-xs text-violet-100 font-medium mb-2 truncate max-w-[80%]">Downloading: {downloadProgress.name}</p>
+          <div className="w-full max-w-sm h-1.5 bg-black/50 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-violet-400 transition-all duration-200 ease-out rounded-full" 
+              style={{ width: `${Math.min(100, Math.round((downloadProgress.loaded / (downloadProgress.total || 1)) * 100))}%` }} 
+            />
+          </div>
+        </div>
+      )}
 
       {/* File list */}
       <div className="flex-1 overflow-y-auto p-2">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="flex items-center gap-3 mb-4">
               <svg className="animate-spin h-5 w-5 text-violet-400" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
               <span className="text-sm text-gray-400">Loading files...</span>
             </div>
+            {progress && progress.total > 0 && (
+              <div className="w-full max-w-xs text-center">
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Reading files</span>
+                  <span>{progress.loaded} / {progress.total}</span>
+                </div>
+                <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-violet-500/50 transition-all duration-300" 
+                    style={{ width: `${Math.round((progress.loaded / progress.total) * 100)}%` }} 
+                  />
+                </div>
+              </div>
+            )}
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -131,7 +192,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
               <div
                 key={entry.path}
                 className="animate-slide-up"
-                style={{ animationDelay: `${i * 30}ms`, animationFillMode: 'backwards' }}
+                style={{ animationDelay: `${i * 10}ms`, animationFillMode: 'backwards' }}
               >
                 <FileItem
                   entry={entry}

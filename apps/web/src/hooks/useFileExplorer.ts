@@ -2,6 +2,11 @@ import { useState, useCallback } from 'react';
 import type { Device, FileEntry, FileListResponse } from '@localdrop/shared-types';
 import { getSocket } from '../lib/socket';
 
+export interface FileExplorerProgress {
+  loaded: number;
+  total: number;
+}
+
 /** Hook to browse files on a remote device */
 export function useFileExplorer(device: Device | null) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -9,19 +14,34 @@ export function useFileExplorer(device: Device | null) {
   const [parentPath, setParentPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<FileExplorerProgress | null>(null);
 
   const navigate = useCallback(async (dirPath: string = '.') => {
     if (!device) return;
     
     setLoading(true);
     setError(null);
+    setProgress(null);
     try {
       if (device.isExpoApp) {
         // Use WebSocket proxy for Expo App
         const socket = getSocket();
         
         const data = await new Promise<FileListResponse>((resolve, reject) => {
-          socket.emit('proxy:file_list', { targetDeviceId: device.id, path: dirPath }, (res: any) => {
+          // Send request but let handler.ts generate requestId, or we generate it? 
+          // handler.ts generates the requestId! Oh wait. If handler.ts generates requestId, 
+          // how does PC web know what event to listen to?
+          // Ah! handler.ts doesn't return the requestId to the callback until it finishes!
+          // We must send our OWN requestId so we can listen to progress!
+          const reqId = Math.random().toString(36).substring(7);
+          
+          const onProgress = (prog: any) => {
+            setProgress({ loaded: prog.loaded, total: prog.total });
+          };
+          socket.on(`proxy:file_list_progress_${reqId}`, onProgress);
+          
+          socket.emit('proxy:file_list', { targetDeviceId: device.id, path: dirPath, clientRequestId: reqId }, (res: any) => {
+            socket.off(`proxy:file_list_progress_${reqId}`, onProgress);
             if (res.error) reject(new Error(res.error));
             else resolve({ entries: res.entries, currentPath: dirPath, parentPath: dirPath === '.' ? null : dirPath.split('/').slice(0, -1).join('/') || '.' });
           });
@@ -46,6 +66,7 @@ export function useFileExplorer(device: Device | null) {
       setEntries([]);
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   }, [device]);
 
@@ -73,7 +94,7 @@ export function useFileExplorer(device: Device | null) {
       ];
 
   return {
-    entries, currentPath, parentPath, loading, error,
+    entries, currentPath, parentPath, loading, error, progress,
     navigate, goUp, goToFolder, refresh, breadcrumbs,
   };
 }

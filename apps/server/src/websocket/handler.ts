@@ -153,7 +153,7 @@ export function setupWebSocketHandlers(
     });
 
     // --- Proxy Events for Mobile App ---
-    socket.on("proxy:file_list", (data: { targetDeviceId: string, path: string }, callback) => {
+    socket.on("proxy:file_list", (data: { targetDeviceId: string, path: string, clientRequestId?: string }, callback) => {
       let targetSocketId: string | null = null;
       for (const [sId, dev] of webDevices.entries()) {
         if (dev.id === data.targetDeviceId) {
@@ -166,28 +166,37 @@ export function setupWebSocketHandlers(
         return callback({ error: "Device not found or offline" });
       }
 
-      const requestId = Math.random().toString(36).substring(7);
-      
-      const responseHandler = (resData: any) => {
-        if (resData.requestId === requestId) {
-          targetSocket.removeListener('file:list_response', responseHandler);
-          callback(resData);
-        }
-      };
+      const requestId = data.clientRequestId || Math.random().toString(36).substring(7);
       
       const targetSocket = io.sockets.sockets.get(targetSocketId);
       if (!targetSocket) return callback({ error: "Socket disconnected" });
       
+      const progressHandler = (progressData: any) => {
+        if (progressData.requestId === requestId) {
+          socket.emit(`proxy:file_list_progress_${requestId}`, progressData);
+        }
+      };
+      
+      const responseHandler = (resData: any) => {
+        if (resData.requestId === requestId) {
+          targetSocket.removeListener('file:list_response', responseHandler);
+          targetSocket.removeListener('file:list_progress', progressHandler);
+          callback(resData);
+        }
+      };
+      
+      targetSocket.on('file:list_progress', progressHandler);
       targetSocket.on('file:list_response', responseHandler);
       targetSocket.emit('file:list_request', { path: data.path, requestId });
       
       setTimeout(() => {
         targetSocket.removeListener('file:list_response', responseHandler);
+        targetSocket.removeListener('file:list_progress', progressHandler);
         callback({ error: "Timeout waiting for mobile app" });
       }, 1000*60*5);
     });
 
-    socket.on("proxy:file_download", (data: { targetDeviceId: string, path: string }, callback) => {
+    socket.on("proxy:file_download", (data: { targetDeviceId: string, path: string, clientRequestId?: string }, callback) => {
       let targetSocketId: string | null = null;
       for (const [sId, dev] of webDevices.entries()) {
         if (dev.id === data.targetDeviceId) {
@@ -200,25 +209,34 @@ export function setupWebSocketHandlers(
         return callback({ error: "Device not found" });
       }
 
-      const requestId = Math.random().toString(36).substring(7);
+      const requestId = data.clientRequestId || Math.random().toString(36).substring(7);
       
       const targetSocket = io.sockets.sockets.get(targetSocketId);
       if (!targetSocket) return callback({ error: "Socket disconnected" });
 
+      const chunkHandler = (chunkData: any) => {
+        if (chunkData.requestId === requestId) {
+          socket.emit(`proxy:file_download_chunk_${requestId}`, chunkData);
+        }
+      };
+
       const responseHandler = (resData: any) => {
         if (resData.requestId === requestId) {
           targetSocket.removeListener('file:download_response', responseHandler);
+          targetSocket.removeListener('file:download_chunk', chunkHandler);
           callback(resData);
         }
       };
       
+      targetSocket.on('file:download_chunk', chunkHandler);
       targetSocket.on('file:download_response', responseHandler);
       targetSocket.emit('file:download_request', { path: data.path, requestId });
       
       setTimeout(() => {
         targetSocket.removeListener('file:download_response', responseHandler);
+        targetSocket.removeListener('file:download_chunk', chunkHandler);
         callback({ error: "Timeout waiting for mobile app download" });
-      }, 30000);
+      }, 1000*60*15); // 15 mins for large files
     });
 
     socket.on("disconnect", () => {
