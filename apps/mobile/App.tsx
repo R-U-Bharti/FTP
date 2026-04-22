@@ -79,15 +79,16 @@ export default function App() {
             }
 
             try {
-              addLog(`PC requested file list`);
-              const files =
-                await FileSystem.StorageAccessFramework.readDirectoryAsync(
-                  sharedDirUri,
-                );
+              const targetUri = data.path === '.' || !data.path ? sharedDirUri : data.path;
+              addLog(`PC requested file list for ${data.path === '.' ? 'root' : 'subfolder'}`);
+
+              const files = await FileSystem.StorageAccessFramework.readDirectoryAsync(targetUri);
+              addLog(`Found ${files.length} items in folder`);
 
               const entries = [];
               for (const fileUri of files) {
                 try {
+                  // Ignore files we can't get info for (e.g., hidden or restricted)
                   const info = await FileSystem.getInfoAsync(fileUri);
                   const decodedUri = decodeURIComponent(fileUri);
                   const name = decodedUri.split("/").pop() || "Unknown";
@@ -103,15 +104,17 @@ export default function App() {
                         : new Date().toISOString(),
                   });
                 } catch (e) {
-                  // Ignore files we can't read
+                  console.error(`Failed to read info for ${fileUri}:`, e);
                 }
               }
 
+              addLog(`Sending ${entries.length} readable entries back`);
               socket.emit("file:list_response", {
                 requestId: data.requestId,
                 entries,
               });
             } catch (err) {
+              addLog(`Read dir error: ${err}`);
               socket.emit("file:list_response", {
                 requestId: data.requestId,
                 error: String(err),

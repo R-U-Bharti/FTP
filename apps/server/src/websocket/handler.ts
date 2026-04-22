@@ -170,7 +170,7 @@ export function setupWebSocketHandlers(
       
       const responseHandler = (resData: any) => {
         if (resData.requestId === requestId) {
-          socket.removeListener('file:list_response', responseHandler);
+          targetSocket.removeListener('file:list_response', responseHandler);
           callback(resData);
         }
       };
@@ -178,13 +178,13 @@ export function setupWebSocketHandlers(
       const targetSocket = io.sockets.sockets.get(targetSocketId);
       if (!targetSocket) return callback({ error: "Socket disconnected" });
       
-      targetSocket.once('file:list_response', responseHandler);
+      targetSocket.on('file:list_response', responseHandler);
       targetSocket.emit('file:list_request', { path: data.path, requestId });
       
       setTimeout(() => {
         targetSocket.removeListener('file:list_response', responseHandler);
         callback({ error: "Timeout waiting for mobile app" });
-      }, 10000);
+      }, 1000*60*5);
     });
 
     socket.on("proxy:file_download", (data: { targetDeviceId: string, path: string }, callback) => {
@@ -212,7 +212,7 @@ export function setupWebSocketHandlers(
         }
       };
       
-      targetSocket.once('file:download_response', responseHandler);
+      targetSocket.on('file:download_response', responseHandler);
       targetSocket.emit('file:download_request', { path: data.path, requestId });
       
       setTimeout(() => {
