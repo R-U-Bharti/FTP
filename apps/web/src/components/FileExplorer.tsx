@@ -1,24 +1,47 @@
-import React, { useCallback, useEffect } from 'react';
-import type { Device, FileEntry } from '@localdrop/shared-types';
-import { useFileExplorer } from '../hooks/useFileExplorer';
-import { getSocket } from '../lib/socket';
-import FileItem from './FileItem';
+import React, { useCallback, useEffect } from "react";
+import type { Device, FileEntry } from "@localdrop/shared-types";
+import { useFileExplorer } from "../hooks/useFileExplorer";
+import { getSocket } from "../lib/socket";
+import FileItem from "./FileItem";
 
 interface FileExplorerProps {
   device: Device | null;
   onDownload: (filePath: string, fileName: string) => void;
+  onToggleUpload?: () => void;
+  showUpload?: boolean;
 }
 
 /** File explorer panel for browsing remote device files */
-const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
-  const { entries, currentPath, loading, error, progress, navigate, goUp, goToFolder, breadcrumbs } =
-    useFileExplorer(device);
+const FileExplorer: React.FC<FileExplorerProps> = ({
+  device,
+  onDownload,
+  onToggleUpload,
+  showUpload,
+}) => {
+  const {
+    entries,
+    currentPath,
+    loading,
+    error,
+    progress,
+    navigate,
+    goUp,
+    goToFolder,
+    breadcrumbs,
+  } = useFileExplorer(device);
 
-  const [downloadProgress, setDownloadProgress] = React.useState<{ name: string; loaded: number; total: number } | null>(null);
+  const [downloads, setDownloads] = React.useState<
+    Record<
+      string,
+      { name: string; loaded: number; total: number; startTime: number; reqId: string }
+    >
+  >({});
   const [showPreview, setShowPreview] = React.useState(false);
-  const [selectedPaths, setSelectedPaths] = React.useState<Set<string>>(new Set());
-  
-  const baseUrl = device ? `http://${device.ip}:${device.port}` : '';
+  const [selectedPaths, setSelectedPaths] = React.useState<Set<string>>(
+    new Set(),
+  );
+
+  const baseUrl = device ? `http://${device.ip}:${device.port}` : "";
 
   // Clear selection on navigate
   useEffect(() => {
@@ -47,14 +70,16 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
 
   // Navigate to root when device changes
   useEffect(() => {
-    if (device) navigate('.');
+    if (device) navigate(".");
   }, [device?.id]);
 
   if (!device) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8">
         <div className="text-6xl mb-4 animate-float">📂</div>
-        <h3 className="text-lg font-semibold text-white mb-2">No Device Selected</h3>
+        <h3 className="text-lg font-semibold text-white mb-2">
+          No Device Selected
+        </h3>
         <p className="text-sm text-gray-500 max-w-xs">
           Select a device from the sidebar to browse its shared files
         </p>
@@ -66,14 +91,20 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-white/[0.01]">
         <div className="text-6xl mb-4 animate-float">📱</div>
-        <h3 className="text-lg font-semibold text-white mb-2">Web Browser Client</h3>
+        <h3 className="text-lg font-semibold text-white mb-2">
+          Web Browser Client
+        </h3>
         <p className="text-sm text-gray-400 max-w-sm leading-relaxed">
-          This device is connected via a web browser and cannot host files to browse.
+          This device is connected via a web browser and cannot host files to
+          browse.
         </p>
         <div className="mt-6 p-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-left max-w-sm">
-          <p className="text-sm text-violet-200 font-medium mb-1">How to send files?</p>
+          <p className="text-sm text-violet-200 font-medium mb-1">
+            How to send files?
+          </p>
           <p className="text-xs text-violet-300/80">
-            To send files <b>from your PC to this mobile</b>, open this page on the mobile browser, select your PC, and download the files you want!
+            To send files <b>from your PC to this mobile</b>, open this page on
+            the mobile browser, select your PC, and download the files you want!
           </p>
         </div>
       </div>
@@ -92,39 +123,60 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
 
   const handleDownload = (entry: FileEntry) => {
     if (device.isExpoApp) {
-      setDownloadProgress({ name: entry.name, loaded: 0, total: entry.size });
+      const downloadId = entry.path + Date.now();
       const socket = getSocket();
       const reqId = Math.random().toString(36).substring(7);
+
+      setDownloads(prev => ({
+        ...prev,
+        [downloadId]: { name: entry.name, loaded: 0, total: entry.size || 1, startTime: Date.now(), reqId }
+      }));
+      
       const chunks: Uint8Array[] = [];
       let currentLoaded = 0;
-      
+
       const onChunk = (data: any) => {
         const bytes = base64ToUint8Array(data.chunk);
         chunks.push(bytes);
-        currentLoaded += data.chunk.length; // rough estimate based on base64 len
-        setDownloadProgress({ name: entry.name, loaded: currentLoaded, total: data.totalSize * 1.33 }); // account for base64 inflation
+        currentLoaded += bytes.length;
+        setDownloads(prev => ({
+          ...prev,
+          [downloadId]: { ...prev[downloadId], loaded: currentLoaded, total: data.totalSize }
+        }));
       };
-      
+
       socket.on(`proxy:file_download_chunk_${reqId}`, onChunk);
-      socket.emit('proxy:file_download', { targetDeviceId: device.id, path: entry.path, clientRequestId: reqId }, (res: any) => {
-        socket.off(`proxy:file_download_chunk_${reqId}`, onChunk);
-        if (res.error) {
-          setDownloadProgress(null);
-          return alert('Download failed: ' + res.error);
-        }
-        
-        const blob = new Blob(chunks, { type: 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = entry.name;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        
-        setDownloadProgress(null);
-      });
+      socket.emit(
+        "proxy:file_download",
+        { targetDeviceId: device.id, path: entry.path, clientRequestId: reqId },
+        (res: any) => {
+          socket.off(`proxy:file_download_chunk_${reqId}`, onChunk);
+          if (res.error) {
+            setDownloads(prev => {
+              const newDls = { ...prev };
+              delete newDls[downloadId];
+              return newDls;
+            });
+            return alert("Download failed: " + res.error);
+          }
+
+          const blob = new Blob(chunks, { type: "application/octet-stream" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = entry.name;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+
+          setDownloads(prev => {
+            const newDls = { ...prev };
+            delete newDls[downloadId];
+            return newDls;
+          });
+        },
+      );
     } else {
       onDownload(entry.path, entry.name);
     }
@@ -136,6 +188,17 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
     setSelectedPaths(new Set());
   };
 
+  const handleCancelDownload = (downloadId: string, reqId: string) => {
+    setDownloads(prev => {
+      const newDls = { ...prev };
+      delete newDls[downloadId];
+      return newDls;
+    });
+    if (device?.isExpoApp) {
+      getSocket().emit('proxy:file_download_cancel', { targetDeviceId: device.id, clientRequestId: reqId });
+    }
+  };
+
   return (
     <div className="flex flex-col h-full relative">
       {/* Breadcrumb navigation */}
@@ -143,16 +206,26 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
         {breadcrumbs.map((crumb, i) => (
           <React.Fragment key={crumb.path}>
             {i > 0 && (
-              <svg className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <svg
+                className="w-3.5 h-3.5 text-gray-600 flex-shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
               </svg>
             )}
             <button
               onClick={() => navigate(crumb.path)}
               className={`text-xs px-2 py-1 rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                 i === breadcrumbs.length - 1
-                  ? 'text-white bg-white/5 font-medium'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  ? "text-white bg-white/5 font-medium"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
               }`}
             >
               {crumb.name}
@@ -160,69 +233,169 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
           </React.Fragment>
         ))}
 
-      {/* Main dropzone for PC -> Mobile uploads */}
-        <button
-          onClick={() => setShowPreview(!showPreview)}
-          className={`ml-auto p-1.5 rounded-lg transition-colors cursor-pointer mr-2 ${showPreview ? 'text-violet-400 bg-violet-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
-          title="Preview Images"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-          </svg>
-        </button>
+        {!loading && entries.length > 0 && (
+          <>
+            {/* Main dropzone for PC -> Mobile uploads */}
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className={`ml-auto p-1.5 rounded-lg transition-colors cursor-pointer mr-2 ${showPreview ? "text-violet-400 bg-violet-500/20" : "text-gray-500 hover:text-white hover:bg-white/5"}`}
+              title="Preview Images"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                />
+              </svg>
+            </button>
 
-        {/* Select All button */}
-        <button
-          onClick={handleSelectAll}
-          className={`ml-2 p-1.5 rounded-lg transition-colors cursor-pointer mr-2 ${selectedPaths.size > 0 && selectedPaths.size === filesCount ? 'text-violet-400 bg-violet-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
-          title="Select All Files"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </button>
+            {/* Select All button */}
+            <button
+              onClick={handleSelectAll}
+              className={`ml-2 p-1.5 rounded-lg transition-colors cursor-pointer mr-2 ${selectedPaths.size > 0 && selectedPaths.size === filesCount ? "text-violet-400 bg-violet-500/20" : "text-gray-500 hover:text-white hover:bg-white/5"}`}
+              title="Select All Files"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </button>
 
+            {/* Upload Toggle button */}
+            {onToggleUpload && !device?.isWebClient && (
+              <button
+                onClick={onToggleUpload}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer mr-2 ${showUpload ? "text-violet-400 bg-violet-500/20" : "text-gray-500 hover:text-white hover:bg-white/5"}`}
+                title="Upload Files"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                  />
+                </svg>
+              </button>
+            )}
+          </>
+        )}
         {/* Refresh button */}
         <button
           onClick={() => navigate(currentPath)}
           className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
           title="Refresh"
         >
-          <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          <svg
+            className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
           </svg>
         </button>
       </div>
 
       {/* Selection Action Bar */}
       {selectedPaths.size > 0 && (
-        <div className="px-5 py-2 bg-violet-500/10 border-b border-violet-500/20 flex items-center gap-3 animate-slide-up z-10 relative" style={{ animationDuration: '200ms' }}>
+        <div
+          className="px-5 py-2 bg-violet-500/10 border-b border-violet-500/20 flex items-center gap-3 animate-slide-up z-10 relative"
+          style={{ animationDuration: "200ms" }}
+        >
           <span className="text-sm font-medium text-violet-300">
-            {selectedPaths.size} file{selectedPaths.size > 1 ? 's' : ''} selected
+            {selectedPaths.size} file{selectedPaths.size > 1 ? "s" : ""}{" "}
+            selected
           </span>
           <button
             onClick={handleDownloadSelected}
             className="ml-auto px-3 py-1.5 bg-violet-500 hover:bg-violet-400 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shadow-lg cursor-pointer"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
             </svg>
             Download Selected
           </button>
         </div>
       )}
-      
-      {/* Download Progress Overlay */}
-      {downloadProgress && (
-        <div className="absolute top-14 left-0 right-0 z-10 bg-violet-900/90 backdrop-blur-sm border-b border-violet-500/30 p-3 flex flex-col items-center justify-center">
-          <p className="text-xs text-violet-100 font-medium mb-2 truncate max-w-[80%]">Downloading: {downloadProgress.name}</p>
-          <div className="w-full max-w-sm h-1.5 bg-black/50 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-violet-400 transition-all duration-200 ease-out rounded-full" 
-              style={{ width: `${Math.min(100, Math.round((downloadProgress.loaded / (downloadProgress.total || 1)) * 100))}%` }} 
-            />
-          </div>
+
+      {/* Download Progress Overlay - Floating Bottom Right */}
+      {Object.keys(downloads).length > 0 && (
+        <div className="absolute bottom-6 right-6 z-50 flex flex-col gap-3 max-h-[50vh] overflow-y-auto w-80 p-2">
+          {Object.entries(downloads).map(([dlId, dl]) => {
+            const percent = Math.min(100, Math.round((dl.loaded / (dl.total || 1)) * 100));
+            const elapsed = (Date.now() - dl.startTime) / 1000;
+            const speed = dl.loaded / Math.max(0.1, elapsed); // bytes per second
+            return (
+              <div key={dlId} className="bg-gray-900/95 backdrop-blur-md border border-violet-500/30 shadow-2xl rounded-xl p-4 flex flex-col gap-2 animate-slide-up relative group">
+                <button 
+                  onClick={() => handleCancelDownload(dlId, dl.reqId)}
+                  className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-400 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Cancel Download"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <div className="flex justify-between items-center text-xs text-violet-100 font-medium pr-2">
+                  <span className="truncate w-3/5" title={dl.name}>{dl.name}</span>
+                  <span className="w-2/5 text-right opacity-80">{percent}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-black/50 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-violet-500 transition-all duration-200 ease-out rounded-full"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-[10px] text-gray-400 mt-0.5">
+                  <span>{(dl.loaded / 1024 / 1024).toFixed(1)} / {(dl.total / 1024 / 1024).toFixed(1)} MB</span>
+                  <span>{(speed / 1024 / 1024).toFixed(1)} MB/s</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -243,11 +416,28 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
             {loading && entries.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16">
                 <div className="flex items-center gap-3 mb-4">
-                  <svg className="animate-spin h-5 w-5 text-violet-400" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  <svg
+                    className="animate-spin h-5 w-5 text-violet-400"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
                   </svg>
-                  <span className="text-sm text-gray-400">Loading files...</span>
+                  <span className="text-sm text-gray-400">
+                    Loading files...
+                  </span>
                 </div>
               </div>
             )}
@@ -256,7 +446,10 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
                 <div
                   key={entry.path}
                   className="animate-slide-up"
-                  style={{ animationDelay: `${(i % 20) * 10}ms`, animationFillMode: 'backwards' }}
+                  style={{
+                    animationDelay: `${(i % 20) * 10}ms`,
+                    animationFillMode: "backwards",
+                  }}
                 >
                   <FileItem
                     entry={entry}
@@ -275,12 +468,16 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
               <div className="sticky bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-xs text-center bg-black/80 backdrop-blur-md p-3 rounded-xl border border-white/10 shadow-xl z-20">
                 <div className="flex justify-between text-xs text-gray-300 mb-1.5">
                   <span>Reading files</span>
-                  <span>{progress.loaded} / {progress.total}</span>
+                  <span>
+                    {progress.loaded} / {progress.total}
+                  </span>
                 </div>
                 <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-violet-500 transition-all duration-300 rounded-full" 
-                    style={{ width: `${Math.round((progress.loaded / progress.total) * 100)}%` }} 
+                  <div
+                    className="h-full bg-violet-500 transition-all duration-300 rounded-full"
+                    style={{
+                      width: `${Math.round((progress.loaded / progress.total) * 100)}%`,
+                    }}
                   />
                 </div>
               </div>

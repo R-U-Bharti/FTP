@@ -239,6 +239,22 @@ export function setupWebSocketHandlers(
       }, 1000*60*15); // 15 mins for large files
     });
 
+    socket.on("proxy:file_download_cancel", (data: { targetDeviceId: string, clientRequestId: string }) => {
+      let targetSocketId: string | null = null;
+      for (const [sId, dev] of webDevices.entries()) {
+        if (dev.id === data.targetDeviceId) {
+          targetSocketId = sId;
+          break;
+        }
+      }
+      if (targetSocketId) {
+        const targetSocket = io.sockets.sockets.get(targetSocketId);
+        if (targetSocket) {
+          targetSocket.emit('file:download_cancel', { requestId: data.clientRequestId });
+        }
+      }
+    });
+
     socket.on("disconnect", () => {
       console.log(`[WebSocket] Client disconnected: ${socket.id}`);
       let disconnectedDeviceId = `web-${socket.id}`;

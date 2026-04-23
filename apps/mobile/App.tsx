@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -21,6 +21,28 @@ export default function App() {
   const [logs, setLogs] = useState<string[]>([]);
 
   const socketRef = useRef<Socket | null>(null);
+  const sharedDirUriRef = useRef<string | null>(null);
+  const cancelledDownloads = useRef<Set<string>>(new Set());
+  
+  // Concurrency control for downloads/previews
+  const activeTasks = useRef(0);
+  const taskQueue = useRef<(() => Promise<void>)[]>([]);
+
+  const processQueue = useCallback(async () => {
+    if (activeTasks.current >= 3 || taskQueue.current.length === 0) return;
+    
+    activeTasks.current++;
+    const task = taskQueue.current.shift();
+    if (task) {
+      try {
+        await task();
+      } catch (e) {
+        console.error("Queue task error:", e);
+      }
+    }
+    activeTasks.current--;
+    processQueue();
+  }, []);
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, msg].slice(-10));
@@ -50,7 +72,7 @@ export default function App() {
         const socket = io(url, {
           transports: ["polling", "websocket"], // Try polling first for React Native
           forceNew: true,
-          query: { clientType: 'expo-app' }
+          query: { clientType: "expo-app" },
         });
 
         socket.on("connect", () => {
@@ -80,45 +102,110 @@ export default function App() {
             }
 
             try {
-              const targetUri = data.path === '.' || !data.path ? sharedDirUri : data.path;
-              addLog(`PC requested file list for ${data.path === '.' ? 'root' : 'subfolder'}`);
+              const currentDir = sharedDirUriRef.current;
+              const targetUri =
+                data.path === "." || !data.path ? currentDir : data.path;
+                
+              if (!targetUri) {
+                addLog(`No folder selected!`);
+                socket.emit("file:list_response", {
+                  requestId: data.requestId,
+                  entries: [],
+                  error: "No folder shared on mobile app"
+                });
+                return;
+              }
 
-              const files = await FileSystem.StorageAccessFramework.readDirectoryAsync(targetUri);
+              addLog(
+                `PC requested file list for ${data.path === "." ? "root" : "subfolder"}`,
+              );
+
+              const files =
+                await FileSystem.StorageAccessFramework.readDirectoryAsync(
+                  targetUri,
+                );
               addLog(`Found ${files.length} items in folder`);
-              
+
               const knownFileExts = new Set([
-                'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'heif',
-                'mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv',
-                'mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a',
-                'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv',
-                'zip', 'rar', '7z', 'tar', 'gz', 'apk', 'iso',
-                'js', 'ts', 'json', 'html', 'css', 'xml', 'log', 'md'
+                "jpg",
+                "jpeg",
+                "png",
+                "gif",
+                "webp",
+                "bmp",
+                "svg",
+                "heic",
+                "heif",
+                "mp4",
+                "mkv",
+                "avi",
+                "mov",
+                "webm",
+                "3gp",
+                "flv",
+                "mp3",
+                "wav",
+                "flac",
+                "ogg",
+                "aac",
+                "m4a",
+                "pdf",
+                "doc",
+                "docx",
+                "xls",
+                "xlsx",
+                "ppt",
+                "pptx",
+                "txt",
+                "rtf",
+                "csv",
+                "zip",
+                "rar",
+                "7z",
+                "tar",
+                "gz",
+                "apk",
+                "iso",
+                "js",
+                "ts",
+                "json",
+                "html",
+                "css",
+                "xml",
+                "log",
+                "md",
               ]);
 
               const entries = files.map(fileUri => {
-                const decodedUri = decodeURIComponent(fileUri).replace(/%2F/g, '/');
+                const decodedUri = decodeURIComponent(fileUri).replace(
+                  /%2F/g,
+                  "/",
+                );
                 const name = decodedUri.split("/").pop() || "Unknown";
-                
-                const parts = name.split('.');
+
+                const parts = name.split(".");
                 const ext = parts.length > 1 ? parts.pop()?.toLowerCase() : "";
-                
+
                 // If it has a known extension, or it has an extension and doesn't start with a dot
-                const isFile = ext ? knownFileExts.has(ext) || (parts[0] !== "" && ext.length <= 4) : false;
+                const isFile = ext
+                  ? knownFileExts.has(ext) ||
+                    (parts[0] !== "" && ext.length <= 4)
+                  : false;
 
                 return {
                   name,
                   path: fileUri,
                   isDirectory: !isFile,
                   size: 0,
-                  modifiedAt: new Date().toISOString()
+                  modifiedAt: new Date().toISOString(),
                 };
               });
 
-              socket.emit("file:list_progress", { 
-                requestId: data.requestId, 
-                loaded: entries.length, 
+              socket.emit("file:list_progress", {
+                requestId: data.requestId,
+                loaded: entries.length,
                 total: entries.length,
-                partialEntries: entries
+                partialEntries: entries,
               });
 
               addLog(`Sending ${entries.length} fast readable entries back`);
@@ -139,51 +226,75 @@ export default function App() {
         // Handle file download request from PC
         socket.on(
           "file:download_request",
-          async (data: { path: string; requestId: string; isPreview?: boolean }) => {
-            try {
-              addLog(`PC downloading file...`);
-              let fileUri = data.path;
-              
-              const info = await FileSystem.getInfoAsync(fileUri);
-              if (!info.exists) throw new Error("File does not exist");
-              
-              if (data.isPreview) {
-                try {
-                  const manipResult = await ImageManipulator.manipulateAsync(
-                    fileUri,
-                    [{ resize: { width: 300 } }],
-                    { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
-                  );
-                  fileUri = manipResult.uri;
-                } catch (e) {
-                  addLog(`Preview generation failed, using original: ${e}`);
-                }
-              }
+          async (data: {
+            path: string;
+            requestId: string;
+            isPreview?: boolean;
+          }) => {
+            const task = async () => {
+              try {
+                addLog(`PC downloading file...`);
+                let fileUri = data.path;
 
-              const newInfo = await FileSystem.getInfoAsync(fileUri);
-              const totalSize = newInfo.size || 0;
-              const chunkSize = 1024 * 512; // 512KB chunks
-              let position = 0;
-              
-              while (position < totalSize) {
-                const chunkLength = Math.min(chunkSize, totalSize - position);
-                const chunkData = await FileSystem.readAsStringAsync(fileUri, { 
+                const info = await FileSystem.getInfoAsync(fileUri);
+                if (!info.exists) throw new Error("File does not exist");
+
+                if (data.isPreview) {
+                  let tempUri = null;
+                  try {
+                    let manipUri = fileUri;
+                    if (fileUri.startsWith('content://')) {
+                      tempUri = FileSystem.cacheDirectory + 'temp_preview_' + Math.random().toString(36).substring(7) + '.jpg';
+                      await FileSystem.copyAsync({ from: fileUri, to: tempUri });
+                      manipUri = tempUri;
+                    }
+
+                    const manipResult = await ImageManipulator.manipulateAsync(
+                      manipUri,
+                      [{ resize: { width: 150 } }],
+                      { compress: 0.3, format: ImageManipulator.SaveFormat.JPEG },
+                    );
+                    fileUri = manipResult.uri;
+
+                    if (tempUri) FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {});
+                  } catch (e) {
+                    addLog(`Preview generation failed: ${e}`);
+                    if (tempUri) FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {});
+                  }
+                }
+
+                const newInfo = await FileSystem.getInfoAsync(fileUri);
+                const totalSize = newInfo.size || 0;
+                const chunkSize = 1024 * 1024 * 1; // 1MB chunks to avoid JS bridge bottlenecks
+                let position = 0;
+
+                while (position < totalSize) {
+                  if (cancelledDownloads.current.has(data.requestId)) {
+                    addLog(`Download cancelled by PC`);
+                    socket.emit('file:download_response', { requestId: data.requestId, error: 'Cancelled by user' });
+                    cancelledDownloads.current.delete(data.requestId);
+                    return; // break out of task
+                  }
+                  const chunkLength = Math.min(chunkSize, totalSize - position);
+                const chunkData = await FileSystem.readAsStringAsync(fileUri, {
                   encoding: FileSystem.EncodingType.Base64,
                   position,
-                  length: chunkLength
+                  length: chunkLength,
                 });
-                
-                socket.emit('file:download_chunk', { 
-                  requestId: data.requestId, 
-                  chunk: chunkData, 
-                  position, 
-                  totalSize 
+
+                socket.emit("file:download_chunk", {
+                  requestId: data.requestId,
+                  chunk: chunkData,
+                  position,
+                  totalSize,
                 });
-                
+
                 position += chunkLength;
               }
-              
-              socket.emit('file:download_response', { requestId: data.requestId });
+
+              socket.emit("file:download_response", {
+                requestId: data.requestId,
+              });
               addLog(`Sent file to PC!`);
             } catch (err) {
               socket.emit("file:download_response", {
@@ -192,10 +303,16 @@ export default function App() {
               });
               addLog(`Failed to send: ${err}`);
             }
-          },
-        );
+          };
+          taskQueue.current.push(task);
+          processQueue();
+        });
 
-        socketRef.current = socket;
+      socket.on("file:download_cancel", (data: { requestId: string }) => {
+        cancelledDownloads.current.add(data.requestId);
+      });
+
+      socketRef.current = socket;
       })
       .catch(err => {
         addLog(`HTTP Ping failed! Is PC firewall blocking?`);
@@ -210,6 +327,7 @@ export default function App() {
           await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
         if (permissions.granted) {
           setSharedDirUri(permissions.directoryUri);
+          sharedDirUriRef.current = permissions.directoryUri;
           const decoded = decodeURIComponent(permissions.directoryUri);
           setSharedDirName(decoded.split(":").pop() || "Shared Folder");
           addLog(`Shared folder selected!`);
@@ -222,7 +340,9 @@ export default function App() {
       } else {
         // Fallback for newer Expo SDKs or iOS
         addLog(`Warning: SAF not available, using App Documents folder`);
-        setSharedDirUri(FileSystem.documentDirectory || "");
+        const docDir = FileSystem.documentDirectory || "";
+        setSharedDirUri(docDir);
+        sharedDirUriRef.current = docDir;
         setSharedDirName("App Documents");
         Alert.alert(
           "Using App Folder",

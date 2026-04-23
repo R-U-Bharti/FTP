@@ -14,6 +14,7 @@ export default function App() {
   const { connected } = useSocket();
   const { devices, loading: devicesLoading } = useDevices();
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
   const [deviceInfo, setDeviceInfo] = useState<{ name: string; ip: string } | null>(null);
 
   // Build base URL for the selected device's server
@@ -127,12 +128,17 @@ export default function App() {
 
               {/* File explorer */}
               <div className="flex-1 overflow-hidden">
-                <FileExplorer device={selectedDevice} onDownload={handleDownload} />
+                <FileExplorer 
+                  device={selectedDevice} 
+                  onDownload={handleDownload}
+                  onToggleUpload={() => setShowUpload(!showUpload)}
+                  showUpload={showUpload}
+                />
               </div>
 
               {/* Drop zone (hidden for web clients since they can't receive HTTP uploads) */}
-              {!selectedDevice.isWebClient && (
-                <div className="px-5 py-4 border-t border-white/5">
+              {!selectedDevice.isWebClient && showUpload && (
+                <div className="px-5 py-4 border-t border-white/5 bg-black/40 animate-slide-up">
                   <DropZone onFilesDropped={handleFilesDropped} />
                 </div>
               )}
