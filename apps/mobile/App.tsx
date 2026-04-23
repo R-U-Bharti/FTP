@@ -131,10 +131,19 @@ export default function App() {
                 `PC requested file list for ${data.path === "." ? "root" : "subfolder"}`,
               );
 
-              const files =
-                await FileSystem.StorageAccessFramework.readDirectoryAsync(
-                  targetUri,
-                );
+              const isSAF = targetUri.startsWith("content://");
+              let files: string[] = [];
+              
+              if (isSAF) {
+                files = await FileSystem.StorageAccessFramework.readDirectoryAsync(targetUri);
+              } else {
+                // For file:// URIs (Internal Storage / Root)
+                const fileNames = await FileSystem.readDirectoryAsync(targetUri);
+                // Convert names to full file:// URIs
+                const baseUri = targetUri.endsWith('/') ? targetUri : targetUri + '/';
+                files = fileNames.map(name => baseUri + name);
+              }
+              
               addLog(`Found ${files.length} items in folder`);
 
               const knownFileExts = new Set([
@@ -365,6 +374,19 @@ export default function App() {
     }
   };
 
+  const shareEntirePhone = async () => {
+    try {
+      await LocaldropServer.requestAllFilesAccess();
+      const rootUri = "file:///storage/emulated/0";
+      setSharedDirUri(rootUri);
+      sharedDirUriRef.current = rootUri;
+      setSharedDirName("Entire Phone Storage");
+      addLog("Shared entire phone storage!");
+    } catch (e) {
+      addLog("Failed to share entire phone: " + e);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -377,9 +399,16 @@ export default function App() {
         <Text style={styles.label}>1. Select Folder to Share</Text>
         <TouchableOpacity style={styles.button} onPress={selectFolder}>
           <Text style={styles.buttonText}>
-            {sharedDirUri ? "Change Folder" : "Select Folder"}
+            {sharedDirUri && !sharedDirUri.startsWith("file://") ? "Change Folder" : "Select Specific Folder"}
           </Text>
         </TouchableOpacity>
+        
+        <TouchableOpacity style={[styles.button, { marginTop: 10, backgroundColor: '#4f46e5' }]} onPress={shareEntirePhone}>
+          <Text style={styles.buttonText}>
+            {sharedDirUri?.startsWith("file://") ? "Refresh Entire Phone Access" : "Share Entire Phone (All Files)"}
+          </Text>
+        </TouchableOpacity>
+
         {sharedDirName && (
           <Text style={styles.infoText}>Sharing: {sharedDirName}</Text>
         )}

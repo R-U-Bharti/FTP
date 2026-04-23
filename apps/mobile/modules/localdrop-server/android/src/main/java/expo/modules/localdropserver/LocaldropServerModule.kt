@@ -5,8 +5,14 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import java.net.ServerSocket
 import java.net.Socket
 import java.io.OutputStream
+import java.io.InputStream
+import java.io.File
+import java.io.FileInputStream
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.content.Intent
+import android.provider.Settings
+import android.os.Environment
 import kotlinx.coroutines.*
 import java.net.URLDecoder
 
@@ -19,22 +25,25 @@ class LocaldropServerModule : Module() {
     Name("LocaldropServer")
 
     AsyncFunction("startServer") { port: Int ->
-      if (serverSocket != null) return@AsyncFunction true
-      try {
-        serverSocket = ServerSocket(port)
-        serverJob = coroutineScope.launch {
-          while (isActive) {
-            try {
-              val socket = serverSocket?.accept() ?: break
-              launch { handleClient(socket) }
-            } catch (e: Exception) {
-              break
+      if (serverSocket != null) {
+        true
+      } else {
+        try {
+          serverSocket = ServerSocket(port)
+          serverJob = coroutineScope.launch {
+            while (isActive) {
+              try {
+                val socket = serverSocket?.accept() ?: break
+                launch { handleClient(socket) }
+              } catch (e: Exception) {
+                break
+              }
             }
           }
+          true
+        } catch (e: Exception) {
+          false
         }
-        return@AsyncFunction true
-      } catch (e: Exception) {
-        throw Exception("Failed to start server: ${e.message}")
       }
     }
 
@@ -42,7 +51,28 @@ class LocaldropServerModule : Module() {
       serverJob?.cancel()
       serverSocket?.close()
       serverSocket = null
-      return@AsyncFunction true
+      true
+    }
+
+    AsyncFunction("requestAllFilesAccess") {
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        if (!Environment.isExternalStorageManager()) {
+          val context = appContext.reactContext
+          if (context != null) {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+            intent.data = Uri.parse("package:" + context.packageName)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            false
+          } else {
+            false
+          }
+        } else {
+          true
+        }
+      } else {
+        true
+      }
     }
   }
 
@@ -68,27 +98,39 @@ class LocaldropServerModule : Module() {
 
       val encodedUri = pathWithArgs.substringAfter("/download?uri=")
       val decodedUriStr = URLDecoder.decode(encodedUri, "UTF-8")
-      val uri = Uri.parse(decodedUriStr)
 
       val context = appContext.reactContext ?: return
       
       var fileSize: Long = 0
       var fileName = "downloaded_file"
+      var inputStream: InputStream? = null
       
-      context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-        if (cursor.moveToFirst()) {
-          val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-          if (sizeIndex != -1) {
-            fileSize = cursor.getLong(sizeIndex)
+      if (decodedUriStr.startsWith("content://")) {
+        val uri = Uri.parse(decodedUriStr)
+        try {
+          context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+              val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+              if (sizeIndex != -1) fileSize = cursor.getLong(sizeIndex)
+              val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+              if (nameIndex != -1) fileName = cursor.getString(nameIndex)
+            }
           }
-          val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-          if (nameIndex != -1) {
-             fileName = cursor.getString(nameIndex)
-          }
+          inputStream = context.contentResolver.openInputStream(uri)
+        } catch (e: Exception) {
+          e.printStackTrace()
+        }
+      } else {
+        // Handle raw file paths (file:// or /storage/...)
+        val path = if (decodedUriStr.startsWith("file://")) decodedUriStr.substring(7) else decodedUriStr
+        val file = File(path)
+        if (file.exists()) {
+          fileSize = file.length()
+          fileName = file.name
+          inputStream = FileInputStream(file)
         }
       }
 
-      val inputStream = context.contentResolver.openInputStream(uri)
       if (inputStream == null) {
         sendError(output, 404, "File Not Found")
         return
@@ -106,14 +148,15 @@ class LocaldropServerModule : Module() {
 
       output.write(headers.toByteArray())
       
-      val buffer = ByteArray(1024 * 1024 * 2) // 2MB chunk buffer for max throughput
+      val buffer = ByteArray(1024 * 1024) // 1MB buffer
       var bytesRead: Int
-      while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-        output.write(buffer, 0, bytesRead)
+      inputStream.use { stream ->
+        while (stream.read(buffer).also { bytesRead = it } != -1) {
+          output.write(buffer, 0, bytesRead)
+        }
       }
       
       output.flush()
-      inputStream.close()
 
     } catch (e: Exception) {
       e.printStackTrace()
