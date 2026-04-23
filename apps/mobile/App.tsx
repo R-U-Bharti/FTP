@@ -86,43 +86,42 @@ export default function App() {
               const files = await FileSystem.StorageAccessFramework.readDirectoryAsync(targetUri);
               addLog(`Found ${files.length} items in folder`);
               
-              socket.emit("file:list_progress", { requestId: data.requestId, loaded: 0, total: files.length, partialEntries: [] });
+              const knownFileExts = new Set([
+                'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'heif',
+                'mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv',
+                'mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a',
+                'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'csv',
+                'zip', 'rar', '7z', 'tar', 'gz', 'apk', 'iso',
+                'js', 'ts', 'json', 'html', 'css', 'xml', 'log', 'md'
+              ]);
 
-              const entries = [];
-              for (let i = 0; i < files.length; i++) {
-                const fileUri = files[i];
-                try {
-                  // Ignore files we can't get info for
-                  const info = await FileSystem.getInfoAsync(fileUri);
-                  const decodedUri = decodeURIComponent(fileUri);
-                  const name = decodedUri.split("/").pop() || "Unknown";
-
-                  entries.push({
-                    name,
-                    path: fileUri,
-                    isDirectory: info.isDirectory,
-                    size: info.exists ? info.size : 0,
-                    modifiedAt:
-                      info.exists && info.modificationTime
-                        ? new Date(info.modificationTime * 1000).toISOString()
-                        : new Date().toISOString(),
-                  });
-                } catch (e) {
-                  console.error(`Failed to read info for ${fileUri}:`, e);
-                }
+              const entries = files.map(fileUri => {
+                const decodedUri = decodeURIComponent(fileUri).replace(/%2F/g, '/');
+                const name = decodedUri.split("/").pop() || "Unknown";
                 
-                // Emit progress
-                if (i % 5 === 0 || i === files.length - 1) {
-                  socket.emit("file:list_progress", { 
-                    requestId: data.requestId, 
-                    loaded: i + 1, 
-                    total: files.length,
-                    partialEntries: entries
-                  });
-                }
-              }
+                const parts = name.split('.');
+                const ext = parts.length > 1 ? parts.pop()?.toLowerCase() : "";
+                
+                // If it has a known extension, or it has an extension and doesn't start with a dot
+                const isFile = ext ? knownFileExts.has(ext) || (parts[0] !== "" && ext.length <= 4) : false;
 
-              addLog(`Sending ${entries.length} readable entries back`);
+                return {
+                  name,
+                  path: fileUri,
+                  isDirectory: !isFile,
+                  size: 0,
+                  modifiedAt: new Date().toISOString()
+                };
+              });
+
+              socket.emit("file:list_progress", { 
+                requestId: data.requestId, 
+                loaded: entries.length, 
+                total: entries.length,
+                partialEntries: entries
+              });
+
+              addLog(`Sending ${entries.length} fast readable entries back`);
               socket.emit("file:list_response", {
                 requestId: data.requestId,
                 entries,
