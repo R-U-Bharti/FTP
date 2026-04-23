@@ -51,6 +51,7 @@ export default function App() {
 
   // Sidebar collapsed state for mobile
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0f] overflow-hidden">
@@ -124,6 +125,20 @@ export default function App() {
                     <p className="text-xs text-gray-500">{selectedDevice.ip}:{selectedDevice.port}</p>
                   </div>
                 </div>
+                
+                {/* Search Bar */}
+                <div className="relative hidden sm:block">
+                  <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search current directory..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="bg-black/20 border border-white/5 rounded-lg pl-9 pr-4 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-violet-500/50 transition-colors w-64"
+                  />
+                </div>
               </div>
 
               {/* File explorer */}
@@ -133,6 +148,7 @@ export default function App() {
                   onDownload={handleDownload}
                   onToggleUpload={() => setShowUpload(!showUpload)}
                   showUpload={showUpload}
+                  searchQuery={searchQuery}
                 />
               </div>
 

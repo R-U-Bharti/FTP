@@ -9,6 +9,7 @@ interface FileExplorerProps {
   onDownload: (filePath: string, fileName: string) => void;
   onToggleUpload?: () => void;
   showUpload?: boolean;
+  searchQuery?: string;
 }
 
 /** File explorer panel for browsing remote device files */
@@ -17,6 +18,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   onDownload,
   onToggleUpload,
   showUpload,
+  searchQuery,
 }) => {
   const {
     entries,
@@ -57,16 +59,22 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     });
   }, []);
 
-  const filesCount = entries.filter(e => !e.isDirectory).length;
+  const filteredEntries = React.useMemo(() => {
+    if (!searchQuery) return entries;
+    const lowerQuery = searchQuery.toLowerCase();
+    return entries.filter(e => e.name.toLowerCase().includes(lowerQuery));
+  }, [entries, searchQuery]);
+
+  const filesCount = filteredEntries.filter(e => !e.isDirectory).length;
 
   const handleSelectAll = useCallback(() => {
     if (selectedPaths.size === filesCount && filesCount > 0) {
       setSelectedPaths(new Set());
     } else {
-      const allFilePaths = entries.filter(e => !e.isDirectory).map(e => e.path);
+      const allFilePaths = filteredEntries.filter(e => !e.isDirectory).map(e => e.path);
       setSelectedPaths(new Set(allFilePaths));
     }
-  }, [entries, selectedPaths.size, filesCount]);
+  }, [filteredEntries, selectedPaths.size, filesCount]);
 
   // Navigate to root when device changes
   useEffect(() => {
@@ -183,7 +191,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   };
 
   const handleDownloadSelected = () => {
-    const selectedEntries = entries.filter(e => selectedPaths.has(e.path));
+    const selectedEntries = filteredEntries.filter(e => selectedPaths.has(e.path));
     selectedEntries.forEach(entry => handleDownload(entry));
     setSelectedPaths(new Set());
   };
@@ -406,14 +414,14 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
             <div className="text-4xl mb-3">⚠️</div>
             <p className="text-sm text-red-400">{error}</p>
           </div>
-        ) : entries.length === 0 && !loading ? (
+        ) : filteredEntries.length === 0 && !loading ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="text-4xl mb-3">📭</div>
-            <p className="text-sm text-gray-400">This folder is empty</p>
+            <div className="text-4xl mb-3">{searchQuery ? "🔍" : "📭"}</div>
+            <p className="text-sm text-gray-400">{searchQuery ? "No matching files found" : "This folder is empty"}</p>
           </div>
         ) : (
           <>
-            {loading && entries.length === 0 && (
+            {loading && filteredEntries.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16">
                 <div className="flex items-center gap-3 mb-4">
                   <svg
@@ -442,7 +450,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
               </div>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-2">
-              {entries.map((entry, i) => (
+              {filteredEntries.map((entry, i) => (
                 <div
                   key={entry.path}
                   className="animate-slide-up"
