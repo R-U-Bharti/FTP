@@ -66,16 +66,16 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     return entries.filter(e => e.name.toLowerCase().includes(lowerQuery));
   }, [entries, searchQuery]);
 
-  const filesCount = filteredEntries.filter(e => !e.isDirectory).length;
+  const itemsCount = filteredEntries.length;
 
   const handleSelectAll = useCallback(() => {
-    if (selectedPaths.size === filesCount && filesCount > 0) {
+    if (selectedPaths.size === itemsCount && itemsCount > 0) {
       setSelectedPaths(new Set());
     } else {
-      const allFilePaths = filteredEntries.filter(e => !e.isDirectory).map(e => e.path);
-      setSelectedPaths(new Set(allFilePaths));
+      const allPaths = filteredEntries.map(e => e.path);
+      setSelectedPaths(new Set(allPaths));
     }
-  }, [filteredEntries, selectedPaths.size, filesCount]);
+  }, [filteredEntries, selectedPaths.size, itemsCount]);
 
   // Navigate to root when device changes
   useEffect(() => {
@@ -148,8 +148,21 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   };
 
   const handleDownloadSelected = () => {
-    const selectedEntries = filteredEntries.filter(e => selectedPaths.has(e.path));
-    selectedEntries.forEach(entry => handleDownload(entry));
+    if (device?.isExpoApp && selectedPaths.size > 0) {
+      // Use the high-speed native ZIP streaming endpoint for multiple files/folders
+      const paths = Array.from(selectedPaths).join(',');
+      const url = `http://${device.ip}:8080/zip?paths=${encodeURIComponent(paths)}`;
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "localdrop_files.zip";
+      link.target = "_blank";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      const selectedEntries = filteredEntries.filter(e => selectedPaths.has(e.path));
+      selectedEntries.forEach(entry => handleDownload(entry));
+    }
     setSelectedPaths(new Set());
   };
 
@@ -230,7 +243,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
             {/* Select All button */}
             <button
               onClick={handleSelectAll}
-              className={`ml-2 p-1.5 rounded-lg transition-colors cursor-pointer mr-2 ${selectedPaths.size > 0 && selectedPaths.size === filesCount ? "text-violet-400 bg-violet-500/20" : "text-gray-500 hover:text-white hover:bg-white/5"}`}
+              className={`ml-2 p-1.5 rounded-lg transition-colors cursor-pointer mr-2 ${selectedPaths.size > 0 && selectedPaths.size === itemsCount ? "text-violet-400 bg-violet-500/20" : "text-gray-500 hover:text-white hover:bg-white/5"}`}
               title="Select All Files"
             >
               <svg
@@ -297,7 +310,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
       {/* Selection Action Bar */}
       {selectedPaths.size > 0 && (
         <div
-          className="px-5 py-2 bg-violet-500/10 border-b border-violet-500/20 flex items-center gap-3 animate-slide-up z-10 relative"
+          className="px-5 py-2 float-right bg-violet-500/10 border-b border-violet-500/20 flex items-center gap-3 animate-slide-up z-10 relative"
           style={{ animationDuration: "200ms" }}
         >
           <span className="text-sm font-medium text-violet-300">

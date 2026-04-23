@@ -189,30 +189,34 @@ const FileItem: React.FC<FileItemProps> = React.memo(
         }
       `}
         onClick={e => {
-          if (!entry.isDirectory && onSelect) {
+          if (onSelect) {
             onSelect(entry, !isSelected);
-          } else if (entry.isDirectory) {
-            handleClick();
           }
         }}
       >
         {/* Selection Checkbox */}
-        {!entry.isDirectory && (
-          <div
-            className="absolute top-2 left-2 z-10"
-            onClick={e => e.stopPropagation()}
-          >
-            <input
-              type="checkbox"
-              className="w-4 h-4 rounded border-gray-600 bg-black/50 text-violet-500 focus:ring-violet-500 focus:ring-offset-gray-900 cursor-pointer"
-              checked={isSelected || false}
-              onChange={e => onSelect?.(entry, e.target.checked)}
-            />
-          </div>
-        )}
+        <div
+          className="absolute top-2 left-2 z-10"
+          onClick={e => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            className="w-4 h-4 rounded border-gray-600 bg-black/50 text-violet-500 focus:ring-violet-500 focus:ring-offset-gray-900 cursor-pointer"
+            checked={isSelected || false}
+            onChange={e => onSelect?.(entry, e.target.checked)}
+          />
+        </div>
 
         {/* Icon or Preview */}
-        <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center rounded-lg bg-black/30 overflow-hidden shadow-inner">
+        <div 
+          onClick={e => {
+            if (entry.isDirectory) {
+              e.stopPropagation();
+              handleClick();
+            }
+          }}
+          className="w-16 h-16 flex-shrink-0 flex items-center justify-center rounded-lg bg-black/30 overflow-hidden shadow-inner"
+        >
           {canPreviewHttp ? (
             <img
               src={`${baseUrl}/api/files/preview?path=${encodeURIComponent(entry.path)}`}
@@ -265,6 +269,12 @@ const FileItem: React.FC<FileItemProps> = React.memo(
           <p
             className="text-sm font-medium text-gray-200 group-hover:text-white transition-colors truncate w-full px-1"
             title={entry.name}
+            onClick={e => {
+              if (entry.isDirectory) {
+                e.stopPropagation();
+                handleClick();
+              }
+            }}
           >
             {entry.name}
           </p>
