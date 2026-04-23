@@ -20,6 +20,8 @@ interface FileItemProps {
   showPreview?: boolean;
   baseUrl?: string;
   device?: Device;
+  isSelected?: boolean;
+  onSelect?: (entry: FileEntry, selected: boolean) => void;
 }
 
 /** File type to icon mapping */
@@ -56,7 +58,7 @@ function formatDate(iso: string): string {
 }
 
 /** Single file/folder row in the file explorer */
-const FileItem: React.FC<FileItemProps> = React.memo(({ entry, onNavigate, onDownload, showPreview, baseUrl, device }) => {
+const FileItem: React.FC<FileItemProps> = React.memo(({ entry, onNavigate, onDownload, showPreview, baseUrl, device, isSelected, onSelect }) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
@@ -139,10 +141,29 @@ const FileItem: React.FC<FileItemProps> = React.memo(({ entry, onNavigate, onDow
         group relative flex flex-col items-center gap-3 p-4 rounded-xl transition-all duration-200 border border-white/5 bg-black/20 h-full
         ${entry.isDirectory
           ? 'cursor-pointer hover:bg-white/[0.06] hover:border-white/10'
-          : 'hover:bg-white/[0.04] hover:border-white/10'
+          : `cursor-pointer hover:bg-white/[0.04] hover:border-white/10 ${isSelected ? 'border-violet-500/50 bg-violet-500/10' : ''}`
         }
       `}
+      onClick={(e) => {
+        if (!entry.isDirectory && onSelect) {
+          onSelect(entry, !isSelected);
+        } else if (entry.isDirectory) {
+          handleClick();
+        }
+      }}
     >
+      {/* Selection Checkbox */}
+      {!entry.isDirectory && (
+        <div className="absolute top-2 left-2 z-10" onClick={(e) => e.stopPropagation()}>
+          <input 
+            type="checkbox" 
+            className="w-4 h-4 rounded border-gray-600 bg-black/50 text-violet-500 focus:ring-violet-500 focus:ring-offset-gray-900 cursor-pointer"
+            checked={isSelected || false}
+            onChange={(e) => onSelect?.(entry, e.target.checked)}
+          />
+        </div>
+      )}
+
       {/* Icon or Preview */}
       <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center rounded-lg bg-black/30 overflow-hidden shadow-inner">
         {canPreviewHttp ? (

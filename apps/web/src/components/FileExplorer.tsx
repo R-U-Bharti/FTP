@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import type { Device, FileEntry } from '@localdrop/shared-types';
 import { useFileExplorer } from '../hooks/useFileExplorer';
 import { getSocket } from '../lib/socket';
@@ -16,8 +16,34 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
 
   const [downloadProgress, setDownloadProgress] = React.useState<{ name: string; loaded: number; total: number } | null>(null);
   const [showPreview, setShowPreview] = React.useState(false);
+  const [selectedPaths, setSelectedPaths] = React.useState<Set<string>>(new Set());
   
   const baseUrl = device ? `http://${device.ip}:${device.port}` : '';
+
+  // Clear selection on navigate
+  useEffect(() => {
+    setSelectedPaths(new Set());
+  }, [currentPath]);
+
+  const handleSelect = useCallback((entry: FileEntry, selected: boolean) => {
+    setSelectedPaths(prev => {
+      const next = new Set(prev);
+      if (selected) next.add(entry.path);
+      else next.delete(entry.path);
+      return next;
+    });
+  }, []);
+
+  const filesCount = entries.filter(e => !e.isDirectory).length;
+
+  const handleSelectAll = useCallback(() => {
+    if (selectedPaths.size === filesCount && filesCount > 0) {
+      setSelectedPaths(new Set());
+    } else {
+      const allFilePaths = entries.filter(e => !e.isDirectory).map(e => e.path);
+      setSelectedPaths(new Set(allFilePaths));
+    }
+  }, [entries, selectedPaths.size, filesCount]);
 
   // Navigate to root when device changes
   useEffect(() => {
@@ -104,6 +130,12 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
     }
   };
 
+  const handleDownloadSelected = () => {
+    const selectedEntries = entries.filter(e => selectedPaths.has(e.path));
+    selectedEntries.forEach(entry => handleDownload(entry));
+    setSelectedPaths(new Set());
+  };
+
   return (
     <div className="flex flex-col h-full relative">
       {/* Breadcrumb navigation */}
@@ -128,7 +160,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
           </React.Fragment>
         ))}
 
-        {/* Preview toggle button */}
+      {/* Main dropzone for PC -> Mobile uploads */}
         <button
           onClick={() => setShowPreview(!showPreview)}
           className={`ml-auto p-1.5 rounded-lg transition-colors cursor-pointer mr-2 ${showPreview ? 'text-violet-400 bg-violet-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
@@ -137,6 +169,17 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+        </button>
+
+        {/* Select All button */}
+        <button
+          onClick={handleSelectAll}
+          className={`ml-2 p-1.5 rounded-lg transition-colors cursor-pointer mr-2 ${selectedPaths.size > 0 && selectedPaths.size === filesCount ? 'text-violet-400 bg-violet-500/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+          title="Select All Files"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </button>
 
@@ -151,6 +194,24 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
           </svg>
         </button>
       </div>
+
+      {/* Selection Action Bar */}
+      {selectedPaths.size > 0 && (
+        <div className="px-5 py-2 bg-violet-500/10 border-b border-violet-500/20 flex items-center gap-3 animate-slide-up z-10 relative" style={{ animationDuration: '200ms' }}>
+          <span className="text-sm font-medium text-violet-300">
+            {selectedPaths.size} file{selectedPaths.size > 1 ? 's' : ''} selected
+          </span>
+          <button
+            onClick={handleDownloadSelected}
+            className="ml-auto px-3 py-1.5 bg-violet-500 hover:bg-violet-400 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shadow-lg cursor-pointer"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Selected
+          </button>
+        </div>
+      )}
       
       {/* Download Progress Overlay */}
       {downloadProgress && (
@@ -204,6 +265,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ device, onDownload }) => {
                     showPreview={showPreview}
                     baseUrl={baseUrl}
                     device={device}
+                    isSelected={selectedPaths.has(entry.path)}
+                    onSelect={handleSelect}
                   />
                 </div>
               ))}
