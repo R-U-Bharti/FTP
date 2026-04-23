@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -11,6 +11,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
+import LocaldropServer from "./modules/localdrop-server";
 import { io, Socket } from "socket.io-client";
 
 export default function App() {
@@ -23,6 +24,16 @@ export default function App() {
   const socketRef = useRef<Socket | null>(null);
   const sharedDirUriRef = useRef<string | null>(null);
   const cancelledDownloads = useRef<Set<string>>(new Set());
+  
+  // Start native HTTP server
+  useEffect(() => {
+    LocaldropServer.startServer(8080).catch(err => {
+      console.log("Failed to start native HTTP server: " + err.message);
+    });
+    return () => {
+      LocaldropServer.stopServer();
+    };
+  }, []);
   
   // Concurrency control for downloads/previews
   const activeTasks = useRef(0);

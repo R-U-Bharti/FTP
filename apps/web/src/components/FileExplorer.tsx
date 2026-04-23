@@ -131,60 +131,16 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
 
   const handleDownload = (entry: FileEntry) => {
     if (device.isExpoApp) {
-      const downloadId = entry.path + Date.now();
-      const socket = getSocket();
-      const reqId = Math.random().toString(36).substring(7);
-
-      setDownloads(prev => ({
-        ...prev,
-        [downloadId]: { name: entry.name, loaded: 0, total: entry.size || 1, startTime: Date.now(), reqId }
-      }));
-      
-      const chunks: Uint8Array[] = [];
-      let currentLoaded = 0;
-
-      const onChunk = (data: any) => {
-        const bytes = base64ToUint8Array(data.chunk);
-        chunks.push(bytes);
-        currentLoaded += bytes.length;
-        setDownloads(prev => ({
-          ...prev,
-          [downloadId]: { ...prev[downloadId], loaded: currentLoaded, total: data.totalSize }
-        }));
-      };
-
-      socket.on(`proxy:file_download_chunk_${reqId}`, onChunk);
-      socket.emit(
-        "proxy:file_download",
-        { targetDeviceId: device.id, path: entry.path, clientRequestId: reqId },
-        (res: any) => {
-          socket.off(`proxy:file_download_chunk_${reqId}`, onChunk);
-          if (res.error) {
-            setDownloads(prev => {
-              const newDls = { ...prev };
-              delete newDls[downloadId];
-              return newDls;
-            });
-            return alert("Download failed: " + res.error);
-          }
-
-          const blob = new Blob(chunks, { type: "application/octet-stream" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = entry.name;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-
-          setDownloads(prev => {
-            const newDls = { ...prev };
-            delete newDls[downloadId];
-            return newDls;
-          });
-        },
-      );
+      // Direct Native HTTP Stream from the LocalDrop Native Android Server!
+      // This bypasses the React Native JS Bridge and Node WebSocket proxy entirely.
+      const url = `http://${device.ip}:8080/download?uri=${encodeURIComponent(entry.path)}`;
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = entry.name;
+      link.target = "_blank"; // Ensure it doesn't navigate away
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } else {
       onDownload(entry.path, entry.name);
     }
