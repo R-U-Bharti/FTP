@@ -29,6 +29,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     navigate,
     goUp,
     goToFolder,
+    refresh,
     breadcrumbs,
   } = useFileExplorer(device);
 
@@ -273,7 +274,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         )}
         {/* Refresh button */}
         <button
-          onClick={() => navigate(currentPath)}
+          onClick={refresh}
           className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
           title="Refresh"
         >

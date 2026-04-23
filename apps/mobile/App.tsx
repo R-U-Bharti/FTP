@@ -134,14 +134,24 @@ export default function App() {
               const isSAF = targetUri.startsWith("content://");
               let files: string[] = [];
               
-              if (isSAF) {
-                files = await FileSystem.StorageAccessFramework.readDirectoryAsync(targetUri);
-              } else {
-                // For file:// URIs (Internal Storage / Root)
-                const fileNames = await FileSystem.readDirectoryAsync(targetUri);
-                // Convert names to full file:// URIs
-                const baseUri = targetUri.endsWith('/') ? targetUri : targetUri + '/';
-                files = fileNames.map(name => baseUri + name);
+              try {
+                if (isSAF) {
+                  files = await FileSystem.StorageAccessFramework.readDirectoryAsync(targetUri);
+                } else {
+                  // For file:// URIs (Internal Storage / Root)
+                  const fileNames = await FileSystem.readDirectoryAsync(targetUri);
+                  // Convert names to full file:// URIs
+                  const baseUri = targetUri.endsWith('/') ? targetUri : targetUri + '/';
+                  files = fileNames.map(name => baseUri + name);
+                }
+              } catch (e) {
+                addLog(`Folder not readable: ${targetUri}`);
+                socket.emit("file:list_response", {
+                  requestId: data.requestId,
+                  entries: [],
+                  error: "Access Denied: This folder is protected by Android system."
+                });
+                return;
               }
               
               addLog(`Found ${files.length} items in folder`);

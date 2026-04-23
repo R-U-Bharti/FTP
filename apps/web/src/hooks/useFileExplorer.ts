@@ -1,4 +1,4 @@
-import { useState, useCallback, startTransition } from 'react';
+import { useState, useCallback, startTransition, useMemo } from 'react';
 import type { Device, FileEntry, FileListResponse } from '@localdrop/shared-types';
 import { getSocket } from '../lib/socket';
 
@@ -108,15 +108,32 @@ export function useFileExplorer(device: Device | null) {
   }, [currentPath, navigate]);
 
   // Build breadcrumb parts from current path
-  const breadcrumbs = currentPath === '.'
-    ? [{ name: 'Home', path: '.' }]
-    : [
-        { name: 'Home', path: '.' },
-        ...currentPath.split('/').map((part, i, arr) => ({
-          name: part,
-          path: arr.slice(0, i + 1).join('/'),
-        })),
-      ];
+  const breadcrumbs = useMemo(() => {
+    if (currentPath === '.') return [{ name: 'Home', path: '.' }];
+    
+    const parts = currentPath.split('/');
+    const crumbs = [{ name: 'Home', path: '.' }];
+    
+    // For absolute URIs, we skip the protocol and root segments that are usually restricted
+    // (e.g. file:///storage/emulated/0 -> skip file:, empty strings, storage, emulated)
+    let startIndex = 0;
+    if (currentPath.startsWith('file:///storage/emulated/0')) {
+      startIndex = 6; // Skip file:, "", "", storage, emulated, 0
+    } else if (currentPath.startsWith('content://')) {
+      // For SAF, breadcrumbs are very complex, let's just show the last few parts or nothing
+      startIndex = parts.length - 1; 
+    }
+
+    for (let i = startIndex; i < parts.length; i++) {
+      if (!parts[i]) continue;
+      crumbs.push({
+        name: decodeURIComponent(parts[i]),
+        path: parts.slice(0, i + 1).join('/')
+      });
+    }
+    
+    return crumbs;
+  }, [currentPath]);
 
   return {
     entries, currentPath, parentPath, loading, error, progress,
