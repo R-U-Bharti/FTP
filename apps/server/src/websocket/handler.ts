@@ -196,7 +196,7 @@ export function setupWebSocketHandlers(
       }, 1000*60*5);
     });
 
-    socket.on("proxy:file_download", (data: { targetDeviceId: string, path: string, clientRequestId?: string }, callback) => {
+    socket.on("proxy:file_download", (data: { targetDeviceId: string, path: string, clientRequestId?: string, isPreview?: boolean }, callback) => {
       let targetSocketId: string | null = null;
       for (const [sId, dev] of webDevices.entries()) {
         if (dev.id === data.targetDeviceId) {
@@ -230,7 +230,7 @@ export function setupWebSocketHandlers(
       
       targetSocket.on('file:download_chunk', chunkHandler);
       targetSocket.on('file:download_response', responseHandler);
-      targetSocket.emit('file:download_request', { path: data.path, requestId });
+      targetSocket.emit('file:download_request', { path: data.path, requestId, isPreview: data.isPreview });
       
       setTimeout(() => {
         targetSocket.removeListener('file:download_response', responseHandler);

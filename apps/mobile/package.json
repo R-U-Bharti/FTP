@@ -9,13 +9,14 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@localdrop/shared-types": "workspace:*",
     "expo": "~54.0.33",
+    "expo-file-system": "~19.0.3",
+    "expo-image-manipulator": "^55.0.15",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-native": "0.81.5",
-    "@localdrop/shared-types": "workspace:*",
-    "socket.io-client": "^4.8.0",
-    "expo-file-system": "~19.0.3"
+    "socket.io-client": "^4.8.0"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",

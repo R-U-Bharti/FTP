@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as FileSystem from "expo-file-system/legacy";
+import * as ImageManipulator from "expo-image-manipulator";
 import { io, Socket } from "socket.io-client";
 
 export default function App() {
@@ -85,7 +86,7 @@ export default function App() {
               const files = await FileSystem.StorageAccessFramework.readDirectoryAsync(targetUri);
               addLog(`Found ${files.length} items in folder`);
               
-              socket.emit("file:list_progress", { requestId: data.requestId, loaded: 0, total: files.length });
+              socket.emit("file:list_progress", { requestId: data.requestId, loaded: 0, total: files.length, partialEntries: [] });
 
               const entries = [];
               for (let i = 0; i < files.length; i++) {
@@ -112,7 +113,12 @@ export default function App() {
                 
                 // Emit progress
                 if (i % 5 === 0 || i === files.length - 1) {
-                  socket.emit("file:list_progress", { requestId: data.requestId, loaded: i + 1, total: files.length });
+                  socket.emit("file:list_progress", { 
+                    requestId: data.requestId, 
+                    loaded: i + 1, 
+                    total: files.length,
+                    partialEntries: entries
+                  });
                 }
               }
 
@@ -134,15 +140,29 @@ export default function App() {
         // Handle file download request from PC
         socket.on(
           "file:download_request",
-          async (data: { path: string; requestId: string }) => {
+          async (data: { path: string; requestId: string; isPreview?: boolean }) => {
             try {
               addLog(`PC downloading file...`);
-              const fileUri = data.path;
+              let fileUri = data.path;
               
               const info = await FileSystem.getInfoAsync(fileUri);
               if (!info.exists) throw new Error("File does not exist");
               
-              const totalSize = info.size || 0;
+              if (data.isPreview) {
+                try {
+                  const manipResult = await ImageManipulator.manipulateAsync(
+                    fileUri,
+                    [{ resize: { width: 300 } }],
+                    { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+                  );
+                  fileUri = manipResult.uri;
+                } catch (e) {
+                  addLog(`Preview generation failed, using original: ${e}`);
+                }
+              }
+
+              const newInfo = await FileSystem.getInfoAsync(fileUri);
+              const totalSize = newInfo.size || 0;
               const chunkSize = 1024 * 512; // 512KB chunks
               let position = 0;
               

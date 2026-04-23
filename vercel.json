@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "buildCommand": "pnpm build --filter=@localdrop/web",
+  "outputDirectory": "apps/web/dist",
+  "cleanUrls": true,
+  "framework": "vite",
+  "installCommand": "pnpm install"
+}

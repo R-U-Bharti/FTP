@@ -37,6 +37,9 @@ export function useFileExplorer(device: Device | null) {
           
           const onProgress = (prog: any) => {
             setProgress({ loaded: prog.loaded, total: prog.total });
+            if (prog.partialEntries) {
+              setEntries(prog.partialEntries);
+            }
           };
           socket.on(`proxy:file_list_progress_${reqId}`, onProgress);
           
