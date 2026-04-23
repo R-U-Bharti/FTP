@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, startTransition } from 'react';
 import type { Device, FileEntry, FileListResponse } from '@localdrop/shared-types';
 import { getSocket } from '../lib/socket';
 
@@ -6,6 +6,8 @@ export interface FileExplorerProgress {
   loaded: number;
   total: number;
 }
+
+const folderCache = new Map<string, { entries: FileEntry[], parentPath: string | null }>();
 
 /** Hook to browse files on a remote device */
 export function useFileExplorer(device: Device | null) {
@@ -16,10 +18,28 @@ export function useFileExplorer(device: Device | null) {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<FileExplorerProgress | null>(null);
 
-  const navigate = useCallback(async (dirPath: string = '.') => {
+  const navigate = useCallback(async (dirPath: string = '.', forceRefresh = false) => {
     if (!device) return;
     
-    setLoading(true);
+    const cacheKey = `${device.id}:${dirPath}`;
+    const cached = folderCache.get(cacheKey);
+
+    // Instant UI transition
+    startTransition(() => {
+      setCurrentPath(dirPath);
+      setParentPath(dirPath === '.' ? null : dirPath.split('/').slice(0, -1).join('/') || '.');
+      
+      if (!forceRefresh && cached) {
+        setEntries(cached.entries);
+        setLoading(false);
+      } else {
+        setEntries([]); // Clear entries for skeleton loading
+        setLoading(true);
+      }
+    });
+    
+    if (!forceRefresh && cached) return;
+
     setError(null);
     setProgress(null);
     try {
@@ -50,9 +70,10 @@ export function useFileExplorer(device: Device | null) {
           });
         });
         
-        setEntries(data.entries || []);
-        setCurrentPath(data.currentPath);
-        setParentPath(data.parentPath);
+        startTransition(() => {
+          setEntries(data.entries || []);
+        });
+        folderCache.set(cacheKey, { entries: data.entries || [], parentPath: data.parentPath });
       } else {
         // Use HTTP for Node.js server
         const baseUrl = `http://${device.ip}:${device.port}`;
@@ -60,9 +81,10 @@ export function useFileExplorer(device: Device | null) {
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Failed to list directory: ${res.statusText}`);
         const data: FileListResponse = await res.json();
-        setEntries(data.entries);
-        setCurrentPath(data.currentPath);
-        setParentPath(data.parentPath);
+        startTransition(() => {
+          setEntries(data.entries);
+        });
+        folderCache.set(cacheKey, { entries: data.entries, parentPath: data.parentPath });
       }
     } catch (err: any) {
       setError(err.message);
@@ -82,7 +104,7 @@ export function useFileExplorer(device: Device | null) {
   }, [navigate]);
 
   const refresh = useCallback(() => {
-    navigate(currentPath);
+    navigate(currentPath, true);
   }, [currentPath, navigate]);
 
   // Build breadcrumb parts from current path
