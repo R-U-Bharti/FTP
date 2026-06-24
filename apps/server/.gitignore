@@ -1,0 +1,4 @@
+# Build artifacts from `pnpm build:exe`
+build/
+public/
+release/

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(pnpm --filter @localdrop/server build:exe 2>&1)",
+      "PowerShell(Get-ChildItem \"d:\\\\Desktop\\\\Codes\\\\MyProjects\\\\FTP-Projects\\\\FTP\\\\apps\\\\server\\\\release\" | Select-Object Name, @{N='MB';E={[math]::Round\\($_.Length/1MB,1\\)}})",
+      "Bash(echo \"=== startup log ===\"; cat /tmp/ld.log | tr -d '\\\\000' | grep -a -E \"Web UI|Local:|Shared\" *)",
+      "Read(//tmp/**)",
+      "Bash(pnpm --filter @localdrop/server build:exe)",
+      "Bash(rm -rf dist)",
+      "Bash(pnpm exec *)",
+      "Bash(echo \"EXIT=$?\")"
+    ]
+  }
+}
