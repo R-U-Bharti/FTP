@@ -9,6 +9,9 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "npm_config_virtual_store_dir": "node_modules/.pnpm"
+      },
       "android": {
         "buildType": "apk"
       }

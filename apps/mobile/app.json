@@ -4,11 +4,11 @@
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -17,7 +17,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#ffffff"
       },
       "usesCleartextTraffic": true,
@@ -30,8 +30,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "1df61a5e-af56-4f14-8271-e0b799211145"
+        "projectId": "34609025-cf26-4a1c-937a-0251a96b5f20"
       }
-    }
+    },
+    "owner": "r_u_bharti"
   }
 }

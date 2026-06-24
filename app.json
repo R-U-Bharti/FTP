@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "40eb0223-d7d2-4a4e-8732-8f4b4e454adc"
+      }
+    },
+    "owner": "r_u_bharti",
+    "android": {
+      "package": "com.r_u_bharti.localdrop"
+    }
+  }
+}

@@ -1,3 +1,9 @@
 node_modules
 .turbo
 dist
+
+# This is a pnpm workspace — npm/yarn lockfiles must never be committed,
+# they make EAS Build / Vercel pick the wrong package manager (npm ci fails
+# on workspace:* deps). Keep only pnpm-lock.yaml.
+package-lock.json
+yarn.lock

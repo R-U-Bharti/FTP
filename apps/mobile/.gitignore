@@ -37,5 +37,12 @@ yarn-error.*
 *.tsbuildinfo
 
 # generated native folders
+# NOTE: /android is intentionally committed — it holds hand-customized native
+# code (custom AndroidManifest, the localdrop-server native module). EAS uses
+# the committed folder directly and skips prebuild. Build artifacts are still
+# excluded via android/.gitignore.
 /ios
-/android
+
+# local expo module build outputs
+modules/*/android/build/
+modules/*/ios/build/

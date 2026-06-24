@@ -11,7 +11,7 @@ import {
 import { StatusBar } from "expo-status-bar";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
-import LocaldropServer from "./modules/localdrop-server";
+import LocaldropServer, { isNativeAvailable } from "./modules/localdrop-server";
 import { io, Socket } from "socket.io-client";
 
 export default function App() {
@@ -385,6 +385,14 @@ export default function App() {
   };
 
   const shareEntirePhone = async () => {
+    if (!isNativeAvailable) {
+      Alert.alert(
+        "Needs a development build",
+        "Sharing your entire phone requires the native all-files permission, which Expo Go can't provide. Use \"Select Specific Folder\" here, or run a development build (npx expo run:android) for full access.",
+      );
+      addLog("Entire-phone sharing unavailable in Expo Go.");
+      return;
+    }
     try {
       await LocaldropServer.requestAllFilesAccess();
       const rootUri = "file:///storage/emulated/0";
