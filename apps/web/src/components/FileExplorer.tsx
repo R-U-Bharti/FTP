@@ -62,9 +62,20 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   }, []);
 
   const filteredEntries = React.useMemo(() => {
-    if (!searchQuery) return entries;
-    const lowerQuery = searchQuery.toLowerCase();
-    return entries.filter(e => e.name.toLowerCase().includes(lowerQuery));
+    let result = entries;
+    if (searchQuery) {
+      const lowerQuery = searchQuery.toLowerCase();
+      result = entries.filter(e => e.name.toLowerCase().includes(lowerQuery));
+    }
+
+    // Default order: folders first, then files — each A→Z (natural, case-insensitive)
+    return [...result].sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.localeCompare(b.name, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
   }, [entries, searchQuery]);
 
   const itemsCount = filteredEntries.length;
