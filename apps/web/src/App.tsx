@@ -55,7 +55,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
 
   return (
-    <div className="h-screen flex flex-col bg-[#0a0a0f] overflow-hidden">
+    <div className="h-screen flex flex-col bg-gradient-to-b from-[#0c0d13] to-[#090a0f] overflow-hidden">
       {/* ── Top Bar ── */}
       <header className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-black/40 backdrop-blur-xl z-10">
         <div className="flex items-center gap-3">

@@ -190,7 +190,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div className="flex flex-col h-full relative bg-[radial-gradient(60%_50%_at_88%_0%,rgba(139,92,246,0.07),transparent_70%)]">
       {/* Breadcrumb navigation */}
       <div className="px-5 py-3 border-b border-white/5 flex items-center gap-1 overflow-x-auto">
         {breadcrumbs.map((crumb, i) => (
