@@ -473,7 +473,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
             <div
               className={
                 viewMode === "grid"
-                  ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-2"
+                  ? "grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2 p-2"
                   : "grid grid-cols-1 lg:grid-cols-2 gap-1.5 p-2"
               }
             >

@@ -26,8 +26,19 @@ interface FileItemProps {
   viewMode?: "grid" | "list";
 }
 
-/** File type to icon mapping */
-const fileIcons: Record<string, string> = {
+type FileType =
+  | "folder"
+  | "image"
+  | "video"
+  | "audio"
+  | "pdf"
+  | "zip"
+  | "code"
+  | "text"
+  | "default";
+
+/** File type to icon (emoji) mapping */
+const fileIcons: Record<FileType, string> = {
   folder: "📁",
   image: "🖼️",
   video: "🎬",
@@ -39,26 +50,40 @@ const fileIcons: Record<string, string> = {
   default: "📋",
 };
 
-function getFileIcon(entry: FileEntry): string {
-  if (entry.isDirectory) return fileIcons.folder;
+/** File type to color theme — tinted icon background + ring (full static classes for Tailwind) */
+const fileColors: Record<FileType, string> = {
+  folder: "bg-amber-500/15 ring-1 ring-amber-400/25",
+  image: "bg-emerald-500/15 ring-1 ring-emerald-400/25",
+  video: "bg-rose-500/15 ring-1 ring-rose-400/25",
+  audio: "bg-fuchsia-500/15 ring-1 ring-fuchsia-400/25",
+  pdf: "bg-red-500/15 ring-1 ring-red-400/25",
+  zip: "bg-orange-500/15 ring-1 ring-orange-400/25",
+  code: "bg-sky-500/15 ring-1 ring-sky-400/25",
+  text: "bg-slate-500/15 ring-1 ring-slate-400/25",
+  default: "bg-gray-500/15 ring-1 ring-gray-400/20",
+};
+
+function getFileType(entry: FileEntry): FileType {
+  if (entry.isDirectory) return "folder";
   const ext =
     entry.extension?.toLowerCase() ||
     entry.name.split(".").pop()?.toLowerCase();
   if (["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"].includes(ext || ""))
-    return fileIcons.image;
-  if (["mp4", "mkv", "avi", "mov", "webm"].includes(ext || ""))
-    return fileIcons.video;
-  if (["mp3", "wav", "flac", "ogg", "aac"].includes(ext || ""))
-    return fileIcons.audio;
-  if (ext === "pdf") return fileIcons.pdf;
-  if (["zip", "rar", "7z", "tar", "gz"].includes(ext || ""))
-    return fileIcons.zip;
+    return "image";
+  if (["mp4", "mkv", "avi", "mov", "webm"].includes(ext || "")) return "video";
+  if (["mp3", "wav", "flac", "ogg", "aac"].includes(ext || "")) return "audio";
+  if (ext === "pdf") return "pdf";
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext || "")) return "zip";
   if (
     ["js", "ts", "py", "java", "cpp", "html", "css", "json"].includes(ext || "")
   )
-    return fileIcons.code;
-  if (["txt", "md", "doc", "docx"].includes(ext || "")) return fileIcons.text;
-  return fileIcons.default;
+    return "code";
+  if (["txt", "md", "doc", "docx"].includes(ext || "")) return "text";
+  return "default";
+}
+
+function getFileIcon(entry: FileEntry): string {
+  return fileIcons[getFileType(entry)];
 }
 
 function formatDate(iso: string): string {
@@ -86,6 +111,8 @@ const FileItem: React.FC<FileItemProps> = React.memo(
   }) => {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [loadingPreview, setLoadingPreview] = useState(false);
+
+    const iconColorClass = fileColors[getFileType(entry)];
 
     const ext =
       entry.extension?.toLowerCase() ||
@@ -230,7 +257,11 @@ const FileItem: React.FC<FileItemProps> = React.memo(
                 handleClick();
               }
             }}
-            className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-md bg-black/30 overflow-hidden"
+            className={`w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-md overflow-hidden ${
+              canPreviewHttp || (canPreviewWs && previewUrl)
+                ? "bg-black/30"
+                : iconColorClass
+            }`}
           >
             {thumbnail}
           </div>
@@ -313,24 +344,21 @@ const FileItem: React.FC<FileItemProps> = React.memo(
       <div
         ref={containerRef}
         id={`file-${entry.name}`}
-        onClick={handleClick}
         className={`
-        group relative flex flex-col items-center gap-3 p-4 rounded-xl transition-all duration-200 border border-white/5 bg-black/20 h-full
+        group relative flex flex-col items-center gap-2 p-3 rounded-xl transition-all duration-200 border border-white/[0.06] bg-white/[0.02] h-full
         ${
           entry.isDirectory
-            ? "cursor-pointer hover:bg-white/[0.06] hover:border-white/10"
-            : `cursor-pointer hover:bg-white/[0.04] hover:border-white/10 ${isSelected ? "border-violet-500/50 bg-violet-500/10" : ""}`
+            ? "cursor-pointer hover:bg-white/[0.06] hover:border-white/15"
+            : `cursor-pointer hover:bg-white/[0.05] hover:border-white/15 ${isSelected ? "border-violet-500/50 bg-violet-500/10" : ""}`
         }
       `}
-        onClick={e => {
-          if (onSelect) {
-            onSelect(entry, !isSelected);
-          }
-        }}
+        onClick={() => onSelect?.(entry, !isSelected)}
       >
-        {/* Selection Checkbox */}
+        {/* Selection Checkbox — visible on hover or when selected */}
         <div
-          className="absolute top-2 left-2 z-10"
+          className={`absolute top-2 left-2 z-10 transition-opacity ${
+            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
           onClick={e => e.stopPropagation()}
         >
           <input
@@ -349,7 +377,11 @@ const FileItem: React.FC<FileItemProps> = React.memo(
               handleClick();
             }
           }}
-          className="w-16 h-16 flex-shrink-0 flex items-center justify-center rounded-lg bg-black/30 overflow-hidden shadow-inner"
+          className={`w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-lg overflow-hidden shadow-inner ${
+            canPreviewHttp || (canPreviewWs && previewUrl)
+              ? "bg-black/30"
+              : iconColorClass
+          }`}
         >
           {canPreviewHttp ? (
             <img
@@ -387,12 +419,12 @@ const FileItem: React.FC<FileItemProps> = React.memo(
                 />
               </svg>
             ) : (
-              <span className="text-3xl drop-shadow-md">
+              <span className="text-2xl drop-shadow-md">
                 {getFileIcon(entry)}
               </span>
             )
           ) : (
-            <span className="text-3xl drop-shadow-md">
+            <span className="text-2xl drop-shadow-md">
               {getFileIcon(entry)}
             </span>
           )}
@@ -449,24 +481,6 @@ const FileItem: React.FC<FileItemProps> = React.memo(
           </button>
         )}
 
-        {/* Folder indicator */}
-        {entry.isDirectory && (
-          <div className="absolute top-2 right-2 p-1">
-            <svg
-              className="w-4 h-4 text-gray-500 group-hover:text-gray-300 transition-colors"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </div>
-        )}
       </div>
     );
   },

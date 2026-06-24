@@ -8,6 +8,7 @@ import DeviceList from './components/DeviceList';
 import FileExplorer from './components/FileExplorer';
 import TransferPanel from './components/TransferPanel';
 import DropZone from './components/DropZone';
+import logo from './logo.png';
 
 /** Main application shell */
 export default function App() {
@@ -70,8 +71,8 @@ export default function App() {
 
           {/* Logo */}
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-              <span className="text-sm">⚡</span>
+            <div className="w-8 h-8 rounded-xl overflow-hidden bg-white flex items-center justify-center shadow-lg shadow-violet-500/20 ring-1 ring-white/10">
+              <img src={logo} alt="LocalDrop" className="w-full h-full object-cover" />
             </div>
             <div>
               <h1 className="text-base font-bold text-white tracking-tight">LocalDrop</h1>
@@ -169,8 +170,8 @@ export default function App() {
               </div>
 
               <div className="relative z-10 text-center max-w-md">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-3xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-2xl shadow-violet-500/30 animate-float">
-                  <span className="text-4xl">⚡</span>
+                <div className="w-20 h-20 mx-auto mb-6 rounded-3xl overflow-hidden bg-white flex items-center justify-center shadow-2xl shadow-violet-500/30 ring-1 ring-white/10 animate-float">
+                  <img src={logo} alt="LocalDrop" className="w-full h-full object-cover" />
                 </div>
 
                 <h2 className="text-2xl font-bold text-white mb-3">
