@@ -22,6 +22,8 @@ interface FileItemProps {
   device?: Device;
   isSelected?: boolean;
   onSelect?: (entry: FileEntry, selected: boolean) => void;
+  /** Layout: "grid" tiles (default) or compact "list" rows */
+  viewMode?: "grid" | "list";
 }
 
 /** File type to icon mapping */
@@ -80,6 +82,7 @@ const FileItem: React.FC<FileItemProps> = React.memo(
     device,
     isSelected,
     onSelect,
+    viewMode = "grid",
   }) => {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [loadingPreview, setLoadingPreview] = useState(false);
@@ -174,6 +177,137 @@ const FileItem: React.FC<FileItemProps> = React.memo(
     const canPreviewHttp =
       showPreview && isImage && !device?.isExpoApp && baseUrl;
     const canPreviewWs = showPreview && isImage && device?.isExpoApp;
+
+    /** Small icon/thumbnail shared by the list row */
+    const thumbnail = canPreviewHttp ? (
+      <img
+        src={`${baseUrl}/api/files/preview?path=${encodeURIComponent(entry.path)}`}
+        alt={entry.name}
+        className="w-full h-full object-cover"
+        loading="lazy"
+      />
+    ) : canPreviewWs && previewUrl ? (
+      <img
+        src={previewUrl}
+        alt={entry.name}
+        className="w-full h-full object-cover"
+        loading="lazy"
+      />
+    ) : (
+      <span className="text-xl drop-shadow-md">{getFileIcon(entry)}</span>
+    );
+
+    if (viewMode === "list") {
+      return (
+        <div
+          ref={containerRef}
+          id={`file-${entry.name}`}
+          onClick={() => onSelect?.(entry, !isSelected)}
+          className={`
+            group relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 border cursor-pointer
+            ${
+              isSelected
+                ? "border-violet-500/50 bg-violet-500/10"
+                : "border-transparent hover:bg-white/[0.04] hover:border-white/10"
+            }
+          `}
+        >
+          {/* Selection Checkbox */}
+          <div onClick={e => e.stopPropagation()} className="flex-shrink-0">
+            <input
+              type="checkbox"
+              className="w-4 h-4 rounded border-gray-600 bg-black/50 text-violet-500 focus:ring-violet-500 focus:ring-offset-gray-900 cursor-pointer"
+              checked={isSelected || false}
+              onChange={e => onSelect?.(entry, e.target.checked)}
+            />
+          </div>
+
+          {/* Icon / thumbnail */}
+          <div
+            onClick={e => {
+              if (entry.isDirectory) {
+                e.stopPropagation();
+                handleClick();
+              }
+            }}
+            className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-md bg-black/30 overflow-hidden"
+          >
+            {thumbnail}
+          </div>
+
+          {/* Name */}
+          <p
+            className="flex-1 min-w-0 text-sm font-medium text-gray-200 group-hover:text-white transition-colors truncate"
+            title={entry.name}
+            onClick={e => {
+              if (entry.isDirectory) {
+                e.stopPropagation();
+                handleClick();
+              }
+            }}
+          >
+            {entry.name}
+          </p>
+
+          {/* Date modified */}
+          {entry.modifiedAt && (
+            <span className="hidden md:block flex-shrink-0 w-44 text-xs text-gray-500 text-right">
+              {formatDate(entry.modifiedAt)}
+            </span>
+          )}
+
+          {/* Size / item count */}
+          <span className="flex-shrink-0 w-24 text-xs text-gray-400 text-right">
+            {entry.isDirectory
+              ? entry.childCount !== undefined
+                ? `${entry.childCount} items`
+                : ""
+              : formatBytes(entry.size) !== "0 B"
+                ? formatBytes(entry.size)
+                : ""}
+          </span>
+
+          {/* Action: download (files) or chevron (folders) */}
+          <div className="flex-shrink-0 w-7 flex items-center justify-center">
+            {entry.isDirectory ? (
+              <svg
+                className="w-4 h-4 text-gray-500 group-hover:text-gray-300 transition-colors"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            ) : (
+              <button
+                onClick={handleDownload}
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md bg-violet-500/80 hover:bg-violet-400 text-white shadow"
+                title="Download"
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div

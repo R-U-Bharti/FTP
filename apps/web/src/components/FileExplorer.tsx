@@ -40,6 +40,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     >
   >({});
   const [showPreview, setShowPreview] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<"grid" | "list">("grid");
   const [selectedPaths, setSelectedPaths] = React.useState<Set<string>>(
     new Set(),
   );
@@ -285,6 +286,45 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
             )}
           </>
         )}
+        {/* Grid / List view toggle */}
+        {!loading && entries.length > 0 && (
+          <button
+            onClick={() => setViewMode(v => (v === "grid" ? "list" : "grid"))}
+            className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer mr-2"
+            title={viewMode === "grid" ? "List view" : "Grid view"}
+          >
+            {viewMode === "grid" ? (
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                />
+              </svg>
+            )}
+          </button>
+        )}
+
         {/* Refresh button */}
         <button
           onClick={refresh}
@@ -419,7 +459,13 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-2">
+            <div
+              className={
+                viewMode === "grid"
+                  ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-2"
+                  : "grid grid-cols-1 lg:grid-cols-2 gap-1.5 p-2"
+              }
+            >
               {filteredEntries.map((entry, i) => (
                 <div
                   key={entry.path}
@@ -438,6 +484,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
                     device={device}
                     isSelected={selectedPaths.has(entry.path)}
                     onSelect={handleSelect}
+                    viewMode={viewMode}
                   />
                 </div>
               ))}
