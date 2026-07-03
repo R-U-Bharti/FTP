@@ -20,7 +20,7 @@ export interface HttpUploadOptions {
   signal?: AbortSignal;
 }
 
-const CONNECTIONS = 4; // parallel streams for large uploads
+const CONNECTIONS = 6; // parallel streams for large uploads
 const MIN_PARALLEL = 8 * 1024 * 1024; // only parallelize files larger than this
 
 /** Upload a single file directly to a device's native HTTP server. */

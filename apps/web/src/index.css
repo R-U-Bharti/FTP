@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Also scan the shared UI package so its classes (ProgressBar gradients, etc.) are generated. */
+@source "../../../packages/ui/src";
+
 /* ── Custom Animations ── */
 @keyframes fade-in {
   from { opacity: 0; }

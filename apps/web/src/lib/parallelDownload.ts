@@ -20,6 +20,19 @@ export interface ParallelDownloadOptions {
 
 const CONNECTIONS = 6; // parallel streams
 const MIN_PARALLEL = 8 * 1024 * 1024; // only parallelize files larger than this
+const WRITE_BLOCK = 8 * 1024 * 1024; // batch small network chunks into big disk writes
+
+/** Concatenate buffered chunks into one contiguous Uint8Array. */
+function concatChunks(chunks: Uint8Array[], length: number): Uint8Array {
+  if (chunks.length === 1) return chunks[0]!;
+  const out = new Uint8Array(length);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
+}
 
 /**
  * @returns true if the download was handled here (streamed to disk, or user cancelled
@@ -74,15 +87,28 @@ export async function parallelDownload(options: ParallelDownloadOptions): Promis
         const res = await fetch(url, { headers: { Range: `bytes=${start}-${end}` }, signal });
         if (!res.ok || !res.body) throw new Error(`Range ${start}-${end} failed (HTTP ${res.status})`);
         const reader = res.body.getReader();
-        let pos = start;
+        let writePos = start;
+        let pending: Uint8Array[] = [];
+        let pendingLen = 0;
+        const flush = async () => {
+          if (pendingLen === 0) return;
+          const block = concatChunks(pending, pendingLen);
+          const at = writePos;
+          writePos += pendingLen;
+          pending = [];
+          pendingLen = 0;
+          await writeAt(at, block);
+        };
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          await writeAt(pos, value);
-          pos += value.length;
+          pending.push(value);
+          pendingLen += value.length;
           loaded += value.length;
           onProgress?.(loaded, total);
+          if (pendingLen >= WRITE_BLOCK) await flush();
         }
+        await flush();
       }),
     );
     await writeChain; // flush queued writes
