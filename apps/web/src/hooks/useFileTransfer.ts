@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { Transfer } from '@localdrop/shared-types';
+import type { Transfer, Device } from '@localdrop/shared-types';
 import { chunkedUpload } from '../lib/chunkedUpload';
+import { httpUploadToDevice } from '../lib/httpUpload';
 import { streamDownload } from '../lib/streamDownload';
 import { getSocket } from '../lib/socket';
 
@@ -51,9 +52,15 @@ export function useFileTransfer(baseUrl: string = '') {
     };
   }, []);
 
-  /** Upload a file using chunked upload */
+  /**
+   * Upload a file to a target device.
+   * - Expo mobile app  → direct HTTP stream to its native server (PC → phone, fast path).
+   * - No device / other server → chunked upload to `baseUrl` (self, or another PC).
+   *
+   * @param targetPath Destination folder on the device (explorer path/URI, or "." for the shared root).
+   */
   const uploadFile = useCallback(
-    (file: File, targetPath: string = '.') => {
+    (file: File, device?: Device | null, targetPath: string = '.') => {
       const transferId = crypto.randomUUID();
       const abortController = new AbortController();
 
@@ -68,48 +75,63 @@ export function useFileTransfer(baseUrl: string = '') {
         status: 'transferring',
         direction: 'upload',
         method: 'http',
-        remoteDeviceId: 'self',
-        remoteDeviceName: 'This Device',
+        remoteDeviceId: device?.id ?? 'self',
+        remoteDeviceName: device?.name ?? 'This Device',
         startedAt: Date.now(),
         abortController,
       };
 
       setTransfers((prev) => [...prev, transfer]);
 
-      chunkedUpload({
-        file,
-        transferId,
-        targetUrl: baseUrl,
-        targetPath,
-        signal: abortController.signal,
-        onProgress: (progress, speed, eta) => {
-          setTransfers((prev) =>
-            prev.map((t) =>
-              t.id === transferId
-                ? { ...t, progress, speed, eta, bytesTransferred: (progress / 100) * file.size, status: 'transferring' as const }
-                : t
-            )
-          );
-        },
-        onComplete: () => {
-          setTransfers((prev) =>
-            prev.map((t) =>
-              t.id === transferId
-                ? { ...t, status: 'completed' as const, progress: 100, completedAt: Date.now() }
-                : t
-            )
-          );
-        },
-        onError: (error) => {
-          setTransfers((prev) =>
-            prev.map((t) =>
-              t.id === transferId
-                ? { ...t, status: 'failed' as const, error }
-                : t
-            )
-          );
-        },
-      });
+      const onProgress = (progress: number, speed: number, eta: number) => {
+        setTransfers((prev) =>
+          prev.map((t) =>
+            t.id === transferId
+              ? { ...t, progress, speed, eta, bytesTransferred: (progress / 100) * file.size, status: 'transferring' as const }
+              : t
+          )
+        );
+      };
+      const onComplete = () => {
+        setTransfers((prev) =>
+          prev.map((t) =>
+            t.id === transferId
+              ? { ...t, status: 'completed' as const, progress: 100, bytesTransferred: file.size, completedAt: Date.now() }
+              : t
+          )
+        );
+      };
+      const onError = (error: string) => {
+        setTransfers((prev) =>
+          prev.map((t) =>
+            t.id === transferId ? { ...t, status: 'failed' as const, error } : t
+          )
+        );
+      };
+
+      if (device?.isExpoApp) {
+        // Fast path: stream straight to the phone's native HTTP server.
+        httpUploadToDevice({
+          file,
+          url: `http://${device.ip}:${device.port || 8080}/upload`,
+          targetDir: targetPath,
+          signal: abortController.signal,
+          onProgress,
+          onComplete,
+          onError,
+        });
+      } else {
+        chunkedUpload({
+          file,
+          transferId,
+          targetUrl: baseUrl,
+          targetPath,
+          signal: abortController.signal,
+          onProgress,
+          onComplete,
+          onError,
+        });
+      }
 
       return transferId;
     },

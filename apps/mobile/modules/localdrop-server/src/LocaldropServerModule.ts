@@ -6,6 +6,9 @@ declare class LocaldropServerModule extends NativeModule<LocaldropServerModuleEv
   startServer(port: number): Promise<boolean>;
   stopServer(): Promise<boolean>;
   requestAllFilesAccess(): Promise<boolean>;
+  /** Tell the native server which folder is currently shared, so PC→phone uploads
+   *  targeting the explorer root (".") land in the right place. */
+  setSharedRoot(uri: string): Promise<boolean>;
 }
 
 // Whether the real Kotlin native module is loaded. False in Expo Go / web,
@@ -39,6 +42,10 @@ function loadModule(): LocaldropServerModule {
       },
       requestAllFilesAccess: async () => {
         warn('requestAllFilesAccess');
+        return false;
+      },
+      setSharedRoot: async () => {
+        warn('setSharedRoot');
         return false;
       },
     } as unknown as LocaldropServerModule;

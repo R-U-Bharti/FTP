@@ -34,6 +34,14 @@ export default function App() {
       LocaldropServer.stopServer();
     };
   }, []);
+
+  // Keep the native server in sync with the shared folder, so PC→phone uploads
+  // that target the explorer root (".") get written into this folder.
+  useEffect(() => {
+    if (sharedDirUri) {
+      LocaldropServer.setSharedRoot(sharedDirUri).catch(() => {});
+    }
+  }, [sharedDirUri]);
   
   // Concurrency control for downloads/previews
   const activeTasks = useRef(0);

@@ -17,6 +17,8 @@ export default function App() {
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [deviceInfo, setDeviceInfo] = useState<{ name: string; ip: string } | null>(null);
+  // The folder currently open in the file explorer — where PC→phone uploads land.
+  const [currentFolder, setCurrentFolder] = useState<string>('.');
 
   // Build base URL for the selected device's server
   const baseUrl = selectedDevice ? `http://${selectedDevice.ip}:${selectedDevice.port}` : '';
@@ -45,9 +47,10 @@ export default function App() {
 
   const handleFilesDropped = useCallback(
     (files: File[]) => {
-      files.forEach((file) => uploadFile(file));
+      // Send to the selected device's current folder; with no device, uploads to self.
+      files.forEach((file) => uploadFile(file, selectedDevice, currentFolder));
     },
-    [uploadFile]
+    [uploadFile, selectedDevice, currentFolder]
   );
 
   // Sidebar collapsed state for mobile
@@ -144,18 +147,29 @@ export default function App() {
 
               {/* File explorer */}
               <div className="flex-1 overflow-hidden">
-                <FileExplorer 
-                  device={selectedDevice} 
+                <FileExplorer
+                  device={selectedDevice}
                   onDownload={handleDownload}
                   onToggleUpload={() => setShowUpload(!showUpload)}
                   showUpload={showUpload}
                   searchQuery={searchQuery}
+                  onCurrentPathChange={setCurrentFolder}
                 />
               </div>
 
               {/* Drop zone (hidden for web clients since they can't receive HTTP uploads) */}
               {!selectedDevice.isWebClient && showUpload && (
                 <div className="px-5 py-4 border-t border-white/5 bg-black/40 animate-slide-up">
+                  <p className="text-xs text-gray-500 mb-2">
+                    Sending to{' '}
+                    <span className="text-violet-300 font-medium">{selectedDevice.name}</span>
+                    {' · '}
+                    <span className="text-gray-400">
+                      {currentFolder === '.'
+                        ? 'shared folder'
+                        : decodeURIComponent(currentFolder.split('/').filter(Boolean).pop() || 'shared folder')}
+                    </span>
+                  </p>
                   <DropZone onFilesDropped={handleFilesDropped} />
                 </div>
               )}

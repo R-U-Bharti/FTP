@@ -54,11 +54,15 @@ export function setupWebSocketHandlers(
     let deviceName = isMobile ? "Mobile Browser" : "Web Browser";
     if (isExpoApp) deviceName = "Mobile App";
 
+    // The Expo mobile app hosts a native HTTP server on 8080 (see apps/mobile/App.tsx),
+    // used for high-speed downloads AND PC→phone uploads. Browser-only clients host nothing.
+    const EXPO_SERVER_PORT = 8080;
+
     const webDevice: Device = {
       id: `web-${clientIp}`,
       name: deviceName,
       ip: clientIp,
-      port: 0,
+      port: isExpoApp ? EXPO_SERVER_PORT : 0,
       platform: isExpoApp ? "android" : "web",
       deviceType: isMobile || isExpoApp ? "mobile" : "desktop",
       online: true,

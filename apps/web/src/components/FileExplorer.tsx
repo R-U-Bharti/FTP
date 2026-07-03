@@ -2,6 +2,7 @@ import React, { useCallback, useEffect } from "react";
 import type { Device, FileEntry } from "@localdrop/shared-types";
 import { useFileExplorer } from "../hooks/useFileExplorer";
 import { getSocket } from "../lib/socket";
+import { parallelDownload } from "../lib/parallelDownload";
 import FileItem from "./FileItem";
 
 interface FileExplorerProps {
@@ -10,6 +11,8 @@ interface FileExplorerProps {
   onToggleUpload?: () => void;
   showUpload?: boolean;
   searchQuery?: string;
+  /** Notifies the parent which folder is open — the destination for PC→phone uploads. */
+  onCurrentPathChange?: (path: string) => void;
 }
 
 /** File explorer panel for browsing remote device files */
@@ -19,6 +22,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   onToggleUpload,
   showUpload,
   searchQuery,
+  onCurrentPathChange,
 }) => {
   const {
     entries,
@@ -39,6 +43,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
       { name: string; loaded: number; total: number; startTime: number; reqId: string }
     >
   >({});
+  const dlControllers = React.useRef<Record<string, AbortController>>({});
   const [showPreview, setShowPreview] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<"grid" | "list">("grid");
   const [selectedPaths, setSelectedPaths] = React.useState<Set<string>>(
@@ -51,6 +56,11 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   useEffect(() => {
     setSelectedPaths(new Set());
   }, [currentPath]);
+
+  // Report the open folder up so uploads land where the user is browsing.
+  useEffect(() => {
+    onCurrentPathChange?.(currentPath);
+  }, [currentPath, onCurrentPathChange]);
 
   const handleSelect = useCallback((entry: FileEntry, selected: boolean) => {
     setSelectedPaths(prev => {
@@ -144,16 +154,55 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
 
   const handleDownload = (entry: FileEntry) => {
     if (device.isExpoApp) {
-      // Direct Native HTTP Stream from the LocalDrop Native Android Server!
-      // This bypasses the React Native JS Bridge and Node WebSocket proxy entirely.
+      // Direct Native HTTP Stream from the LocalDrop Native Android Server.
+      // Large file:// files download over several parallel connections (peak speed);
+      // small / SAF files fall back to a plain anchor download.
       const url = `http://${device.ip}:8080/download?uri=${encodeURIComponent(entry.path)}`;
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = entry.name;
-      link.target = "_blank"; // Ensure it doesn't navigate away
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const anchorDownload = () => {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = entry.name;
+        link.target = "_blank"; // Ensure it doesn't navigate away
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
+      const dlId = Math.random().toString(36).substring(2);
+      const controller = new AbortController();
+      dlControllers.current[dlId] = controller;
+      setDownloads(prev => ({
+        ...prev,
+        [dlId]: { name: entry.name, loaded: 0, total: 0, startTime: Date.now(), reqId: dlId },
+      }));
+      const clear = () => {
+        delete dlControllers.current[dlId];
+        setDownloads(prev => {
+          const next = { ...prev };
+          delete next[dlId];
+          return next;
+        });
+      };
+
+      parallelDownload({
+        url,
+        fileName: entry.name,
+        signal: controller.signal,
+        onProgress: (loaded, total) =>
+          setDownloads(prev => {
+            const cur = prev[dlId];
+            return cur ? { ...prev, [dlId]: { ...cur, loaded, total } } : prev;
+          }),
+      })
+        .then(handled => {
+          clear();
+          if (!handled) anchorDownload();
+        })
+        .catch(() => {
+          const wasCancelled = controller.signal.aborted;
+          clear();
+          if (!wasCancelled) anchorDownload();
+        });
     } else {
       onDownload(entry.path, entry.name);
     }
@@ -179,6 +228,8 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   };
 
   const handleCancelDownload = (downloadId: string, reqId: string) => {
+    dlControllers.current[downloadId]?.abort();
+    delete dlControllers.current[downloadId];
     setDownloads(prev => {
       const newDls = { ...prev };
       delete newDls[downloadId];

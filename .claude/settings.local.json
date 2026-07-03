@@ -8,7 +8,13 @@
       "Bash(pnpm --filter @localdrop/server build:exe)",
       "Bash(rm -rf dist)",
       "Bash(pnpm exec *)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(pnpm --version)",
+      "Bash(pnpm dev *)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm --filter @localdrop/server exec tsc --noEmit)",
+      "Bash(echo \"=== SERVER EXIT: $? ===\")",
+      "Bash(pnpm --filter @localdrop/web exec tsc -b)"
     ]
   }
 }
