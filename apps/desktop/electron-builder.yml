@@ -1,0 +1,26 @@
+appId: com.localdrop.desktop
+productName: LocalDrop
+
+# The entire server (Express, Socket.IO, discovery) and the web UI are bundled
+# into dist/main.cjs by build-desktop.mjs, so the packaged app needs nothing but
+# that file and the Electron runtime — no node_modules to ship.
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - package.json
+
+# Single self-contained, double-click .exe — no installer.
+win:
+  target:
+    - portable
+  artifactName: LocalDrop-Desktop-${version}.exe
+  # Skip Authenticode signing + rcedit. We ship unsigned, which also avoids
+  # electron-builder downloading the `winCodeSign` toolchain (its macOS dylib
+  # symlinks fail to extract on Windows without Developer Mode / admin).
+  signAndEditExecutable: false
+
+portable:
+  artifactName: LocalDrop-Desktop-${version}.exe

@@ -1,0 +1,17 @@
+{
+  "name": "@localdrop/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LocalDrop desktop app — runs the server and renders the UI in a native window (no browser needed).",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "dev:desktop": "node scripts/build-desktop.mjs --no-package && electron dist/main.cjs",
+    "build:desktop": "node scripts/build-desktop.mjs",
+    "clean": "rm -rf dist release"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0"
+  }
+}
